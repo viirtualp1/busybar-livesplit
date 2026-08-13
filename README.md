@@ -2,6 +2,8 @@
 
 LiveSplit timer on a [BUSY Bar](https://busy.app/)
 
+<!-- Add a photo or gif of the Bar running a split here. -->
+
 ## What you get
 
 **Front**
@@ -12,7 +14,7 @@ LiveSplit timer on a [BUSY Bar](https://busy.app/)
 
 **Back**
 
-- Up to 5 splits
+- Up to 5 splits, current one highlighted
 - Live / run time + PB column
 - Attempt count in the header, `PB` over the right column
 
@@ -20,6 +22,9 @@ LiveSplit timer on a [BUSY Bar](https://busy.app/)
 
 - Short LED flash on start / split / reset / PB
 - Quiet stock sounds: start, reset and finish **only if** the last split is done and the run is a PB
+
+The run is controlled from LiveSplit itself (keyboard or global hotkeys). The Bar is
+display-only: its firmware does not hand button presses to external apps yet.
 
 ## Requirements
 
@@ -42,10 +47,10 @@ Edit `.env`, then:
 npm run dev
 ```
 
-Leave Busybar on a BUSY / CUSTOM session
+Leave Busybar on a BUSY / CUSTOM session, or the Bar's own session will outrank the
+draws (see `DRAW_PRIORITY` below).
 
 ## Bar connection
-
 
 | Mode  | `BUSY_ADDR`            | Auth                               |
 | ----- | ---------------------- | ---------------------------------- |
@@ -53,10 +58,10 @@ Leave Busybar on a BUSY / CUSTOM session
 | Wi-Fi | Bar LAN IP             | `BUSY_HTTP_PASSWORD` (HTTP Access) |
 | Cloud | `https://api.busy.app` | `BUSY_TOKEN`                       |
 
+**Wi-Fi:** the Bar and the machine running this process must share a network.
+`BUSY_ADDR` is the **Bar's** IP, not the PC's.
 
-**Wi-Fi:** Bar and the PC running this process must be on the same network. `BUSY_ADDR` is the **Bar’s** IP, not the Windows PC
-
-1. Plug USB once, open `http://10.0.4.20` → **Network**.
+1. Plug in USB once, open `http://10.0.4.20` → **Network**.
 2. Connect the Bar to Wi-Fi. Copy its LAN IP (e.g. `192.168.1.42`).
 3. Enable **HTTP API access** and set a password.
 4. In `.env` (same folder you run `npm run dev` from):
@@ -67,18 +72,23 @@ BUSY_HTTP_PASSWORD=the-password-from-step-3
 BUSY_TOKEN=
 ```
 
-Leave `BUSY_TOKEN` empty on LAN — that token is only for `api.busy.app`. If LiveSplit is on this Windows PC, keep `LIVESPLIT_HOST=127.0.0.1`. If this process runs on another machine, set `LIVESPLIT_HOST` to the **Windows** LAN IP instead.
+Leave `BUSY_TOKEN` empty on a LAN — that token only works against `api.busy.app`.
+Unused credentials are reported on startup instead of being silently dropped.
 
 ## LiveSplit
 
-Right-click LiveSplit → **Control → Start TCP Server**. Default port is `16834`
+Right-click LiveSplit → **Control → Start TCP Server**. Default port is `16834`.
 
-`LIVESPLIT_PROTOCOL=auto` tries TCP first, then `ws://host:port/livesplit`. Set `tcp` or `ws` to skip the other
+`LIVESPLIT_PROTOCOL=auto` tries TCP first, then `ws://host:port/livesplit`. Set `tcp`
+or `ws` to skip the other. If LiveSplit runs on this machine keep
+`LIVESPLIT_HOST=127.0.0.1`; if the timer is on another PC, point it at that PC's LAN IP.
+
+Commands LiveSplit does not know are detected once per connection and never sent
+again, so older builds keep working with fewer details on screen.
 
 ## Config
 
-
-| Variable             | Default                                                  |                                                        |
+| Variable             | Default                                                  | Description                                            |
 | -------------------- | -------------------------------------------------------- | ------------------------------------------------------ |
 | `BUSY_ADDR`          | `https://api.busy.app` if token is set, else `10.0.4.20` | Bar host                                               |
 | `BUSY_TOKEN`         | empty                                                    | Cloud token                                            |
@@ -86,18 +96,43 @@ Right-click LiveSplit → **Control → Start TCP Server**. Default port is `168
 | `LIVESPLIT_HOST`     | `127.0.0.1`                                              | LiveSplit host                                         |
 | `LIVESPLIT_PORT`     | `16834`                                                  | LiveSplit port                                         |
 | `LIVESPLIT_PROTOCOL` | `auto`                                                   | `auto` / `tcp` / `ws`                                  |
-| `POLL_MS`            | `80`                                                     | LiveSplit poll interval                                |
+| `POLL_MS`            | `250`                                                    | LiveSplit poll interval                                |
+| `FRAME_MS`           | `60`                                                     | Bar redraw interval                                    |
 | `DRAW_PRIORITY`      | `40`                                                     | Must be ≥ the app on screen; BUSY/CUSTOM session is 90 |
 
+The running timer is computed locally between polls, so hundredths stay smooth
+without hammering LiveSplit. Out-of-range values are clamped with a warning.
+
+## Development
+
+```bash
+npm run check   # lint + typecheck + tests
+npm test        # node:test, no device needed
+npm run build   # dist/
+```
+
+Layout: `src/livesplit` speaks the protocol, `src/domain` holds the run logic
+(events, gold, interpolation), `src/view` turns a snapshot into text and colours,
+`src/bar` draws it, and `src/app.ts` wires the poll and render loops together.
 
 ## Troubleshooting
 
-`LiveSplit timeout` — TCP Server is not running, or the host/port is wrong. Restart LiveSplit’s server and this process
+**`LiveSplit timeout`** — the TCP server is not running or the host/port is wrong. A
+timeout drops the connection on purpose (replies are matched by order, so a late one
+would corrupt every following read) and the poll loop reconnects by itself.
 
-**Draws ignored / 409** — a BUSY or CUSTOM session is on screen. Stop it, or raise `DRAW_PRIORITY` (session is 90)
+**Draws ignored / 409** — a BUSY or CUSTOM session owns the screen. Stop it or raise
+`DRAW_PRIORITY` (a session is 90).
 
-**Waiting for BUSY Bar** — USB: `10.0.4.20`. Wi-Fi: HTTP Access enabled + password. Cloud: valid `BUSY_TOKEN`
+**Waiting for BUSY Bar** — USB: `10.0.4.20`. Wi-Fi: HTTP Access enabled + password.
+Cloud: valid `BUSY_TOKEN`. A 403 means the password is missing or wrong.
 
-**No gold** — add a Best Segments comparison in LiveSplit, or the current segment is not beating it yet (needs >200 ms of segment time)
+**No gold** — add a Best Segments comparison in LiveSplit. A split that was skipped
+or passed between two polls has an unknown segment length and never lights up.
 
-**No sound** — volume is not muted on the Bar. Finish sound plays only on a PB (delta `< 0`, or no comparison on a first complete run)
+**No sound** — check the Bar is not muted. The finish sound only plays on a PB
+(delta `< 0`, or no comparison at all on a first complete run).
+
+## License
+
+MIT — see [LICENSE](LICENSE).

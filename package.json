@@ -3,22 +3,62 @@
   "version": "1.0.0",
   "description": "LiveSplit speedrun timer on BUSY Bar",
   "author": "viirtualp1",
+  "license": "MIT",
   "type": "module",
   "main": "dist/index.js",
+  "bin": {
+    "busybar-livesplit": "dist/index.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    ".env.example"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/viirtualp1/busybar-livesplit.git"
+  },
+  "bugs": {
+    "url": "https://github.com/viirtualp1/busybar-livesplit/issues"
+  },
+  "homepage": "https://github.com/viirtualp1/busybar-livesplit#readme",
+  "keywords": [
+    "livesplit",
+    "speedrun",
+    "busy-bar",
+    "busybar",
+    "timer",
+    "led"
+  ],
   "engines": {
     "node": ">=22"
   },
   "scripts": {
-    "build": "tsc",
+    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
+    "build": "npm run clean && tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.test.json",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "node --import tsx --test \"test/**/*.test.ts\"",
+    "check": "npm run lint && npm run typecheck && npm test",
+    "dev": "tsx src/index.ts",
     "start": "npm run build && node dist/index.js",
-    "dev": "tsx src/index.ts"
+    "prepublishOnly": "npm run check && npm run build"
   },
   "dependencies": {
     "@busy-app/busy-lib": "^0.18.0"
   },
   "devDependencies": {
+    "@eslint/js": "^9.40.0",
     "@types/node": "^24.2.0",
+    "eslint": "^9.40.0",
+    "eslint-config-prettier": "^10.1.8",
+    "prettier": "^3.6.2",
     "tsx": "^4.20.3",
-    "typescript": "^5.9.2"
+    "typescript": "^5.9.2",
+    "typescript-eslint": "^8.46.4"
   }
 }

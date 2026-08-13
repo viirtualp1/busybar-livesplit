@@ -12,6 +12,8 @@
     "noUncheckedIndexedAccess": true,
     "exactOptionalPropertyTypes": true,
     "strict": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
     "verbatimModuleSyntax": true,
     "isolatedModules": true,
     "noUncheckedSideEffectImports": true,
