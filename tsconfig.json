@@ -1,14 +1,10 @@
 {
   "compilerOptions": {
-    "rootDir": "src",
-    "outDir": "dist",
     "module": "nodenext",
     "target": "esnext",
     "lib": ["esnext"],
     "types": ["node"],
-    "sourceMap": true,
-    "declaration": true,
-    "declarationMap": true,
+    "noEmit": true,
     "noUncheckedIndexedAccess": true,
     "exactOptionalPropertyTypes": true,
     "strict": true,
@@ -20,5 +16,5 @@
     "moduleDetection": "force",
     "skipLibCheck": true
   },
-  "include": ["src"]
+  "include": ["src", "test"]
 }

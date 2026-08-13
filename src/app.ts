@@ -135,7 +135,7 @@ export class App {
     this.flash.trigger(event, this.now());
     this.logger.info(
       `[${event}] ${formatTimer(this.snapshot.timeMs)}` +
-        (this.snapshot.splitName ? `  ${this.snapshot.splitName}` : ''),
+      (this.snapshot.splitName ? `  ${this.snapshot.splitName}` : ''),
     );
 
     if (event !== 'split') {
