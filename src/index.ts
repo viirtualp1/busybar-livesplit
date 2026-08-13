@@ -32,26 +32,37 @@ function triggerFlash(kind: FlashKind): void {
 }
 
 function onBarInput(event: BarInput): void {
+  void handleBarInput(event);
+}
+
+async function handleBarInput(event: BarInput): Promise<void> {
   if (!livesplit.connected) {
     console.warn(`Bar ${event.kind} ignored: LiveSplit is not connected`);
     return;
   }
-  if (event.kind === 'ok') {
-    if (lastPhase === 'Paused') {
-      livesplit.resume();
-    } else if (lastPhase === 'Running') {
-      livesplit.pause();
-    } else {
-      livesplit.startTimer();
+  try {
+    if (event.kind === 'ok') {
+      const action = await livesplit.applyWheel();
+      console.log(`Bar wheel → LiveSplit ${action}`);
+      return;
     }
-    return;
-  }
-  if (event.kind === 'back') {
-    display.forceRedraw();
-    return;
-  }
-  if (event.kind === 'start') {
-    livesplit.reset();
+    if (event.kind === 'back') {
+      display.forceRedraw();
+      return;
+    }
+    if (event.kind === 'start') {
+      const action = await livesplit.applyReset();
+      if (!action) {
+        console.log(
+          'Bar start → reset skipped (timer already idle). Wheel click starts the run.',
+        );
+        return;
+      }
+      console.log(`Bar start → LiveSplit ${action}`);
+    }
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    console.warn(`Bar ${event.kind} failed: ${reason}`);
   }
 }
 
@@ -191,7 +202,7 @@ console.log(
   'LiveSplit: right click → Control → Start TCP Server (port 16834)',
 );
 console.log(
-  'Bar: start = reset, wheel click = start/pause/resume (Back closes overlay — ignored)',
+  'Bar: big Start button = reset (does nothing if idle), wheel click = start/pause/resume (Back closes overlay — ignored)',
 );
 
 await connectBar();
