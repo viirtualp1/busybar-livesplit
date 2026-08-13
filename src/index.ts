@@ -3,7 +3,11 @@ import { config } from './config.js';
 import { buildFrame } from './format.js';
 import { LiveSplitClient } from './livesplit.js';
 
-const livesplit = new LiveSplitClient(config.liveSplitHost, config.liveSplitPort);
+const livesplit = new LiveSplitClient(
+  config.liveSplitHost,
+  config.liveSplitPort,
+  config.liveSplitProtocol,
+);
 const bar = createBusyBar();
 const display = new BarDisplay(bar);
 
@@ -19,7 +23,7 @@ async function connectLiveSplit(): Promise<void> {
     try {
       await livesplit.connect();
       console.log(
-        `LiveSplit connected (${config.liveSplitHost}:${config.liveSplitPort})`,
+        `LiveSplit connected (${livesplit.activeProtocol} ${config.liveSplitHost}:${config.liveSplitPort})`,
       );
     } catch {
       console.warn(
@@ -68,7 +72,7 @@ async function loop(): Promise<void> {
       const reason = error instanceof Error ? error.message : String(error);
       console.warn(reason);
       livesplit.disconnect();
-      await sleep(500);
+      await sleep(1500);
     }
 
     await sleep(config.pollMs);

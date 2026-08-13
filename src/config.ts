@@ -45,6 +45,13 @@ function envNumber(name: string, fallback: number): number {
   return Number.isFinite(value) ? value : fallback;
 }
 
+function parseProtocol(value: string): 'auto' | 'tcp' | 'ws' {
+  if (value === 'tcp' || value === 'ws') {
+    return value;
+  }
+  return 'auto';
+}
+
 loadEnvFile(resolve(process.cwd(), '.env'));
 
 const token = process.env.BUSY_TOKEN?.trim() || '';
@@ -59,6 +66,7 @@ export const config = {
   busyHttpPassword: httpPassword,
   liveSplitHost: envString('LIVESPLIT_HOST', '127.0.0.1'),
   liveSplitPort: envNumber('LIVESPLIT_PORT', 16834),
+  liveSplitProtocol: parseProtocol(envString('LIVESPLIT_PROTOCOL', 'auto')),
   pollMs: envNumber('POLL_MS', 80),
   drawPriority: envNumber('DRAW_PRIORITY', 40),
 };
