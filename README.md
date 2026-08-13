@@ -83,9 +83,6 @@ Right-click LiveSplit → **Control → Start TCP Server**. Default port is `168
 or `ws` to skip the other. If LiveSplit runs on this machine keep
 `LIVESPLIT_HOST=127.0.0.1`; if the timer is on another PC, point it at that PC's LAN IP.
 
-Commands LiveSplit does not know are detected once per connection and never sent
-again, so older builds keep working with fewer details on screen.
-
 ## Config
 
 | Variable             | Default                                                  | Description                                            |
@@ -126,6 +123,10 @@ would corrupt every following read) and the poll loop reconnects by itself.
 
 **Waiting for BUSY Bar** — USB: `10.0.4.20`. Wi-Fi: HTTP Access enabled + password.
 Cloud: valid `BUSY_TOKEN`. A 403 means the password is missing or wrong.
+
+**Empty back screen / `#0` attempts** — the timer works but the split list does not,
+which means the old LiveSplit.Server component is in use. Start the built-in server
+(**Control → Start TCP Server**) on a current LiveSplit build instead.
 
 **No gold** — add a Best Segments comparison in LiveSplit. A split that was skipped
 or passed between two polls has an unknown segment length and never lights up.

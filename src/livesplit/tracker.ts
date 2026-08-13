@@ -1,7 +1,10 @@
+import { ServerCapabilities, type ServerFeature } from './capabilities.js';
+import { LiveSplitTimeoutError } from './connection.js';
 import {
   emptySnapshot,
   isTimerPhase,
   parseLiveSplitTime,
+  replyValue,
   sanitizeSplitName,
   type RunSnapshot,
   type SplitInfo,
@@ -11,13 +14,10 @@ import {
 export type CommandChannel = {
   readonly connected: boolean;
   send(command: string): Promise<string>;
-  probe(command: string): Promise<string | null>;
+  trySend(command: string): Promise<string | null>;
 };
 
-type Support = 'unknown' | 'supported' | 'unsupported';
-
 const RUN_RECHECK_MS = 2000;
-const MAX_PROBED_SPLITS = 128;
 
 /**
  * Turns the request/response protocol into a snapshot, keeping everything that
@@ -25,13 +25,11 @@ const MAX_PROBED_SPLITS = 128;
  * steady frame costs three commands instead of ten.
  */
 export class RunTracker {
-  private support = new Map<string, Support>();
   private splitNames: string[] = [];
   private pbCumulative: Array<number | null> = [];
   private runCumulative: Array<number | null> = [];
   private bestCumulative: Array<number | null> = [];
   private fingerprint = '';
-  private probedSplitCount: number | null = null;
   private runCheckedAt = Number.NEGATIVE_INFINITY;
   private attemptCount = 0;
   private phase: TimerPhase | null = null;
@@ -45,17 +43,16 @@ export class RunTracker {
   constructor(
     private readonly channel: CommandChannel,
     private readonly now: () => number = () => performance.now(),
+    private readonly capabilities = new ServerCapabilities(),
   ) {}
 
-  /** Drops every cache; call after a reconnect, since feature support may differ. */
+  /** Drops the run caches; feature support is kept, it belongs to the server. */
   reset(): void {
-    this.support.clear();
     this.splitNames = [];
     this.pbCumulative = [];
     this.runCumulative = [];
     this.bestCumulative = [];
     this.fingerprint = '';
-    this.probedSplitCount = null;
     this.runCheckedAt = Number.NEGATIVE_INFINITY;
     this.attemptCount = 0;
     this.phase = null;
@@ -64,6 +61,10 @@ export class RunTracker {
   }
 
   async poll(): Promise<RunSnapshot> {
+    if (!this.capabilities.complete) {
+      await this.capabilities.detect(this.channel);
+    }
+
     const phaseRaw = await this.ask('getcurrenttimerphase');
     const phase = phaseRaw !== null && isTimerPhase(phaseRaw) ? phaseRaw : 'NotRunning';
 
@@ -182,8 +183,11 @@ export class RunTracker {
     if (index < 0) {
       return null;
     }
-    const raw = await this.ask('getcomparisonsplittime Best Segments');
-    const cumulative = parseLiveSplitTime(raw ?? '');
+    const raw = await this.askOptional(
+      'bestSegments',
+      'getcomparisonsplittime Best Segments',
+    );
+    const cumulative = raw === null ? null : parseLiveSplitTime(raw);
     if (cumulative === null) {
       return null;
     }
@@ -197,7 +201,7 @@ export class RunTracker {
   }
 
   private async refreshAttemptCount(): Promise<void> {
-    const raw = await this.ask('getattemptcount');
+    const raw = await this.askOptional('attemptCount', 'getattemptcount');
     if (raw === null) {
       return;
     }
@@ -225,31 +229,42 @@ export class RunTracker {
       return;
     }
 
-    const first = sanitizeSplitName((await this.ask('getsplitname 0')) ?? '');
-    const last =
-      count > 1
-        ? sanitizeSplitName((await this.ask(`getsplitname ${count - 1}`)) ?? '')
-        : first;
+    // Times still line up with indices, so the rows are usable without names.
+    if (!this.capabilities.supports('splitNames')) {
+      await this.applyIfChanged(`${count}`, () =>
+        Array.from({ length: count }, () => ''),
+      );
+      return;
+    }
 
-    const fingerprint = `${count}|${first}|${last}`;
+    const first = sanitizeSplitName((await this.askSplitName(0)) ?? '');
+    const last =
+      count > 1 ? sanitizeSplitName((await this.askSplitName(count - 1)) ?? '') : first;
+
+    await this.applyIfChanged(`${count}|${first}|${last}`, async () => {
+      const names: string[] = [];
+      for (let i = 0; i < count; i += 1) {
+        if (i === 0) {
+          names.push(first);
+        } else if (i === count - 1) {
+          names.push(last);
+        } else {
+          names.push(sanitizeSplitName((await this.askSplitName(i)) ?? ''));
+        }
+      }
+      return names;
+    });
+  }
+
+  private async applyIfChanged(
+    fingerprint: string,
+    build: () => string[] | Promise<string[]>,
+  ): Promise<void> {
     if (fingerprint === this.fingerprint) {
       return;
     }
     this.fingerprint = fingerprint;
-
-    const names: string[] = [];
-    for (let i = 0; i < count; i += 1) {
-      if (i === 0) {
-        names.push(first);
-        continue;
-      }
-      if (i === count - 1) {
-        names.push(last);
-        continue;
-      }
-      names.push(sanitizeSplitName((await this.ask(`getsplitname ${i}`)) ?? ''));
-    }
-    this.applyRun(names);
+    this.applyRun(await build());
   }
 
   private applyRun(names: string[]): void {
@@ -260,46 +275,42 @@ export class RunTracker {
     this.clearSplitCache();
   }
 
-  private async readSplitCount(): Promise<number> {
-    const raw = await this.ask('getsplitcount');
-    if (raw !== null) {
-      const parsed = Number.parseInt(raw, 10);
-      return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
-    }
+  private async askSplitName(index: number): Promise<string | null> {
+    return this.askOptional('splitNames', `getsplitname ${index}`);
+  }
 
-    if (this.probedSplitCount !== null) {
-      return this.probedSplitCount;
+  private async readSplitCount(): Promise<number> {
+    const raw = await this.askOptional('splitCount', 'getsplitcount');
+    if (raw === null) {
+      return 0;
     }
-    let count = 0;
-    while (count < MAX_PROBED_SPLITS) {
-      const name = await this.channel.probe(`getsplitname ${count}`);
-      if (name === null || !name.trim() || name.trim() === '-') {
-        break;
-      }
-      count += 1;
-    }
-    this.probedSplitCount = count;
-    return count;
+    const parsed = Number.parseInt(raw, 10);
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+  }
+
+  private async ask(command: string): Promise<string | null> {
+    return replyValue(await this.channel.send(command));
   }
 
   /**
-   * LiveSplit stays silent on commands it does not know, so each one is probed
-   * once and then sent normally — a plain send would time out and, since a
-   * timeout is fatal, drop the connection on every poll.
+   * Only sent once the probe confirmed the command exists. Should it still kill
+   * the connection — LiveSplit throws on a comparison it cannot find — the
+   * feature is retired rather than repeated on every reconnect.
    */
-  private async ask(command: string): Promise<string | null> {
-    const key = command.split(' ')[0] ?? command;
-    const state = this.support.get(key) ?? 'unknown';
-
-    if (state === 'unsupported') {
+  private async askOptional(
+    feature: ServerFeature,
+    command: string,
+  ): Promise<string | null> {
+    if (!this.capabilities.supports(feature)) {
       return null;
     }
-    if (state === 'supported') {
-      return this.channel.send(command);
+    try {
+      return replyValue(await this.channel.send(command));
+    } catch (error) {
+      if (error instanceof LiveSplitTimeoutError && error.command === command) {
+        this.capabilities.disable(feature);
+      }
+      throw error;
     }
-
-    const reply = await this.channel.probe(command);
-    this.support.set(key, reply === null ? 'unsupported' : 'supported');
-    return reply;
   }
 }

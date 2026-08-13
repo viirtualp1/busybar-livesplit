@@ -44,6 +44,21 @@ export function emptySnapshot(receivedAt = 0): RunSnapshot {
   };
 }
 
+/**
+ * LiveSplit answers "-" when a value is missing, and the older server component
+ * reports failures as "[Error]: ..." on the same channel — neither is data.
+ */
+export function replyValue(raw: string | null): string | null {
+  if (raw === null) {
+    return null;
+  }
+  const value = raw.trim();
+  if (!value || value === '-' || value === '?' || value.startsWith('[Error]')) {
+    return null;
+  }
+  return value;
+}
+
 export function parseLiveSplitTime(raw: string): number | null {
   const value = raw.trim();
   if (!value || value === '-' || value === '?') {

@@ -3,8 +3,19 @@ import { test } from 'node:test';
 import {
   isTimerPhase,
   parseLiveSplitTime,
+  replyValue,
   sanitizeSplitName,
 } from '../src/livesplit/types.js';
+
+test('treats placeholders and server errors as missing values', () => {
+  assert.equal(replyValue('00:00:12.34'), '00:00:12.34');
+  assert.equal(replyValue(null), null);
+  assert.equal(replyValue(''), null);
+  assert.equal(replyValue('  '), null);
+  assert.equal(replyValue('-'), null);
+  assert.equal(replyValue('?'), null);
+  assert.equal(replyValue('[Error]: System.Exception: Unrecognized command: "x"'), null);
+});
 
 test('parses hours, minutes and seconds', () => {
   assert.equal(parseLiveSplitTime('00:00:12.34'), 12_340);

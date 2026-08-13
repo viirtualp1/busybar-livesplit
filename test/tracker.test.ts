@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
+import { LiveSplitTimeoutError } from '../src/livesplit/connection.js';
 import { RunTracker, type CommandChannel } from '../src/livesplit/tracker.js';
 
 type Replies = Record<string, string | null>;
@@ -7,6 +8,7 @@ type Replies = Record<string, string | null>;
 class FakeChannel implements CommandChannel {
   connected = true;
   sent: string[] = [];
+  probed: string[] = [];
 
   constructor(private replies: Replies) {}
 
@@ -18,13 +20,14 @@ class FakeChannel implements CommandChannel {
     this.sent.push(command);
     const reply = this.lookup(command);
     if (reply === null) {
-      throw new Error(`LiveSplit timeout: ${command}`);
+      throw new LiveSplitTimeoutError(command);
     }
     return reply;
   }
 
-  async probe(command: string): Promise<string | null> {
+  async trySend(command: string): Promise<string | null> {
     this.sent.push(command);
+    this.probed.push(command);
     return this.lookup(command);
   }
 
@@ -78,6 +81,25 @@ test('a first poll collects names, attempts and comparisons', async () => {
   );
   assert.equal(snapshot.liveDeltaMs, -5000);
   assert.equal(snapshot.liveSegmentMs, 10_000);
+});
+
+/** Only the commands older builds lack may be probed; the rest must be sent plainly. */
+test('feature detection probes optional commands once', async () => {
+  clock = 0;
+  const channel = new FakeChannel(runningReplies());
+  const run = tracker(channel);
+  await run.poll();
+
+  assert.deepEqual(channel.probed, [
+    'getsplitcount',
+    'getsplitname 0',
+    'getattemptcount',
+    'getcomparisonsplittime Best Segments',
+  ]);
+
+  const marker = channel.probed.length;
+  await run.poll();
+  assert.deepEqual(channel.probed.slice(marker), []);
 });
 
 test('a steady frame costs three commands', async () => {
@@ -187,7 +209,7 @@ test('an unchanged run is not reloaded on every idle poll', async () => {
   assert.equal(channel.since(marker).includes('getsplitname 1'), false);
 });
 
-test('unsupported commands are probed once and then skipped', async () => {
+test('a command the server lacks is detected once and then skipped', async () => {
   clock = 0;
   const channel = new FakeChannel(runningReplies({ getattemptcount: null }));
   const run = tracker(channel);
@@ -201,16 +223,71 @@ test('unsupported commands are probed once and then skipped', async () => {
   assert.equal(snapshot.attemptCount, 0);
 });
 
-test('a missing split count falls back to probing names', async () => {
+test('without getsplitcount the run has no rows', async () => {
   clock = 0;
-  const replies = runningReplies({ getsplitcount: null });
-  const channel = new FakeChannel(replies);
+  const channel = new FakeChannel(runningReplies({ getsplitcount: null }));
   const snapshot = await tracker(channel).poll();
 
+  assert.deepEqual(snapshot.splits, []);
+  assert.equal(channel.sent.includes('getsplitname 1'), false);
+});
+
+/** Times are indexed, so rows still make sense on a server without names. */
+test('without getsplitname the rows are kept but unnamed', async () => {
+  clock = 0;
+  const channel = new FakeChannel(
+    runningReplies({
+      'getsplitname 0': null,
+      'getsplitname 1': null,
+      'getsplitname 2': null,
+    }),
+  );
+  const snapshot = await tracker(channel).poll();
+
+  assert.equal(snapshot.splits.length, 3);
   assert.deepEqual(
     snapshot.splits.map((split) => split.name),
-    ['One', 'Two', 'Three'],
+    ['', '', ''],
   );
+});
+
+test('an error reply is not shown as data', async () => {
+  clock = 0;
+  const channel = new FakeChannel(
+    runningReplies({
+      getcurrentsplitname: '[Error]: System.Exception: Unrecognized command',
+      getdelta: '[Error]: System.Collections.Generic.KeyNotFoundException',
+    }),
+  );
+  const snapshot = await tracker(channel).poll();
+
+  assert.equal(snapshot.splitName, '');
+  assert.equal(snapshot.lastDeltaMs, null);
+});
+
+test('an optional command that kills the connection is retired', async () => {
+  clock = 0;
+  const channel = new FakeChannel(runningReplies());
+  const run = tracker(channel);
+  await run.poll();
+
+  channel.set(
+    runningReplies({
+      getsplitindex: '2',
+      'getcomparisonsplittime Best Segments': null,
+    }),
+  );
+  await assert.rejects(run.poll(), /timeout/i);
+
+  channel.set(runningReplies({ 'getcomparisonsplittime Best Segments': null }));
+  const marker = channel.sent.length;
+  const snapshot = await run.poll();
+
+  assert.equal(
+    channel.since(marker).includes('getcomparisonsplittime Best Segments'),
+    false,
+  );
+  assert.equal(snapshot.bestSegmentMs, null);
 });
 
 test('a reset run clears the recorded times', async () => {
@@ -233,7 +310,7 @@ test('a reset run clears the recorded times', async () => {
   assert.equal(snapshot.splitName, '');
 });
 
-test('reset() drops every cache so a reconnect re-probes', async () => {
+test('reset() reloads the run but keeps the detected features', async () => {
   clock = 0;
   const channel = new FakeChannel(runningReplies());
   const run = tracker(channel);
@@ -241,7 +318,9 @@ test('reset() drops every cache so a reconnect re-probes', async () => {
 
   run.reset();
   const marker = channel.sent.length;
+  const probedBefore = channel.probed.length;
   await run.poll();
 
   assert.ok(channel.since(marker).includes('getsplitname 1'));
+  assert.equal(channel.probed.length, probedBefore);
 });
