@@ -14,61 +14,60 @@ export const COLORS = {
 
 export type TimerFrame = {
   timeText: string;
-  deltaText: string;
   splitText: string;
+  deltaText: string;
   timeColor: string;
-  deltaColor: string;
   splitColor: string;
+  deltaColor: string;
 };
 
 export function buildFrame(state: LiveSplitState): TimerFrame {
   const timeText = formatTimer(state.timeMs, state.phase);
   const timeColor = timerColor(state);
-  const deltaMs = state.liveDeltaMs ?? state.lastDeltaMs;
-  const deltaText =
-    deltaMs !== null && state.phase !== 'NotRunning' ? formatDelta(deltaMs) : '';
+  const deltaMs = displayedDelta(state);
+  const deltaText = deltaMs === null ? '' : formatDeltaCompact(deltaMs);
   const deltaColor = timeColor;
 
   if (state.phase === 'NotRunning') {
     return {
       timeText,
-      deltaText: '',
       splitText: 'READY',
+      deltaText: '',
       timeColor: COLORS.notRunning,
-      deltaColor: COLORS.notRunning,
       splitColor: COLORS.notRunning,
+      deltaColor: COLORS.notRunning,
     };
   }
 
   if (state.phase === 'Paused') {
     return {
       timeText,
-      deltaText,
       splitText: state.splitName || 'PAUSED',
+      deltaText,
       timeColor,
-      deltaColor,
       splitColor: COLORS.paused,
+      deltaColor,
     };
   }
 
   if (state.phase === 'Ended') {
     return {
       timeText,
-      deltaText,
       splitText: state.splitName || 'DONE',
+      deltaText,
       timeColor,
-      deltaColor,
       splitColor: timeColor,
+      deltaColor,
     };
   }
 
   return {
     timeText,
-    deltaText,
     splitText: state.splitName || 'RUNNING',
+    deltaText,
     timeColor,
-    deltaColor,
     splitColor: COLORS.white,
+    deltaColor,
   };
 }
 
@@ -90,18 +89,38 @@ export function formatTimer(ms: number, phase: TimerPhase): string {
   return `${minutes}:${pad(seconds)}.${pad(hundredths)}`;
 }
 
-export function formatDelta(ms: number): string {
+function displayedDelta(state: LiveSplitState): number | null {
+  if (state.phase === 'NotRunning') {
+    return null;
+  }
+
+  if (state.phase === 'Ended') {
+    return state.liveDeltaMs ?? state.lastDeltaMs;
+  }
+
+  const live = state.liveDeltaMs;
+  const last = state.lastDeltaMs;
+  if (live === null) {
+    return last;
+  }
+  if (live > 0 || (last !== null && live > last)) {
+    return live;
+  }
+  return last;
+}
+
+function formatDeltaCompact(ms: number): string {
   const sign = ms < 0 ? '-' : '+';
   const abs = Math.abs(ms);
   const minutes = Math.floor(abs / 60_000);
   const seconds = Math.floor((abs % 60_000) / 1000);
-  const hundredths = Math.floor((abs % 1000) / 10);
+  const tenths = Math.floor((abs % 1000) / 100);
 
   if (minutes > 0) {
-    return `${sign}${minutes}:${pad(seconds)}.${pad(hundredths)}`;
+    return `${sign}${minutes}:${pad(seconds)}`;
   }
 
-  return `${sign}${seconds}.${pad(hundredths)}`;
+  return `${sign}${seconds}.${tenths}`;
 }
 
 function timerColor(state: LiveSplitState): string {

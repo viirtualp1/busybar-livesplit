@@ -6,6 +6,9 @@ const APP_NAME = 'livesplit';
 const FRONT_WIDTH = 72;
 const TIMER_HEIGHT = 10;
 const SPLIT_Y = 11;
+const DELTA_WIDTH = 16;
+const SPLIT_WIDTH = FRONT_WIDTH - DELTA_WIDTH;
+const TINY_CHAR_WIDTH = 3;
 
 export function createBusyBar(): BusyBar {
   return new BusyBar({
@@ -67,9 +70,10 @@ export class BarDisplay {
       await this.bar.DisplayClear({ application_name: APP_NAME });
       this.clearedStale = true;
     }
-    const deltaWidth = frame.deltaText ? frame.deltaText.length * 4 + 2 : 0;
-    const splitX = Math.min(deltaWidth, 40);
-    const splitWidth = Math.max(FRONT_WIDTH - splitX, 24);
+    const hasDelta = frame.deltaText.length > 0;
+    const splitWidth = hasDelta ? SPLIT_WIDTH : FRONT_WIDTH;
+    const splitX = Math.floor(splitWidth / 2);
+    const splitText = clipText(frame.splitText || ' ', splitWidth);
 
     const payload: DisplayDrawParams = {
       application_name: APP_NAME,
@@ -103,29 +107,28 @@ export class BarDisplay {
           timeout: 0,
         },
         {
-          id: 'delta',
-          type: 'text',
-          text: frame.deltaText || ' ',
-          font: 'tiny',
-          color: frame.deltaColor,
-          display: 'front',
-          align: 'top_left',
-          x: 1,
-          y: SPLIT_Y,
-          timeout: 0,
-        },
-        {
           id: 'split',
           type: 'text',
-          text: frame.splitText || ' ',
+          text: splitText,
           font: 'tiny',
           color: frame.splitColor,
           display: 'front',
-          align: 'top_left',
+          align: 'top_mid',
           x: splitX,
           y: SPLIT_Y,
           width: splitWidth,
-          scroll_rate: 700,
+          timeout: 0,
+        },
+        {
+          id: 'delta',
+          type: 'text',
+          text: hasDelta ? frame.deltaText : ' ',
+          font: 'tiny',
+          color: hasDelta ? frame.deltaColor : '#00000000',
+          display: 'front',
+          align: 'top_right',
+          x: FRONT_WIDTH - 1,
+          y: SPLIT_Y,
           timeout: 0,
         },
       ],
@@ -152,12 +155,23 @@ export class BarDisplay {
 function frameKey(frame: TimerFrame): string {
   return [
     frame.timeText,
-    frame.deltaText,
     frame.splitText,
+    frame.deltaText,
     frame.timeColor,
-    frame.deltaColor,
     frame.splitColor,
+    frame.deltaColor,
   ].join('|');
+}
+
+function clipText(text: string, widthPx: number): string {
+  const maxChars = Math.max(1, Math.floor(widthPx / TINY_CHAR_WIDTH));
+  if (text.length <= maxChars) {
+    return text;
+  }
+  if (maxChars <= 2) {
+    return text.slice(0, maxChars);
+  }
+  return `${text.slice(0, maxChars - 2)}..`;
 }
 
 function isLowPriority(error: unknown): boolean {
