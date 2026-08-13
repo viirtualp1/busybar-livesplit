@@ -1,7 +1,6 @@
 import { BarDisplay, createBusyBar } from './bar.js';
 import { config } from './config.js';
 import { buildFrame, type FlashKind } from './format.js';
-import { BarInputListener, barInputUrl, type BarInput } from './input.js';
 import { LiveSplitClient, type LiveSplitState } from './livesplit.js';
 
 const livesplit = new LiveSplitClient(
@@ -11,10 +10,6 @@ const livesplit = new LiveSplitClient(
 );
 const bar = createBusyBar();
 const display = new BarDisplay(bar);
-const input = new BarInputListener(
-  barInputUrl(config.busyAddr, config.busyHttpPassword, config.busyToken),
-  onBarInput,
-);
 
 let running = true;
 let lastPhase = '';
@@ -29,41 +24,6 @@ function sleep(ms: number): Promise<void> {
 function triggerFlash(kind: FlashKind): void {
   flash = kind;
   flashUntil = Date.now() + 450;
-}
-
-function onBarInput(event: BarInput): void {
-  void handleBarInput(event);
-}
-
-async function handleBarInput(event: BarInput): Promise<void> {
-  if (!livesplit.connected) {
-    console.warn(`Bar ${event.kind} ignored: LiveSplit is not connected`);
-    return;
-  }
-  try {
-    if (event.kind === 'ok') {
-      const action = await livesplit.applyWheel();
-      console.log(`Bar wheel → LiveSplit ${action}`);
-      return;
-    }
-    if (event.kind === 'back') {
-      display.forceRedraw();
-      return;
-    }
-    if (event.kind === 'start') {
-      const action = await livesplit.applyReset();
-      if (!action) {
-        console.log(
-          'Bar start → reset skipped (timer already idle). Wheel click starts the run.',
-        );
-        return;
-      }
-      console.log(`Bar start → LiveSplit ${action}`);
-    }
-  } catch (error) {
-    const reason = error instanceof Error ? error.message : String(error);
-    console.warn(`Bar ${event.kind} failed: ${reason}`);
-  }
 }
 
 function detectEvents(state: LiveSplitState): FlashKind {
@@ -181,7 +141,6 @@ async function shutdown(): Promise<void> {
     return;
   }
   running = false;
-  input.stop();
   livesplit.disconnect();
   try {
     await display.clear();
@@ -201,11 +160,7 @@ console.log('busybar-livesplit');
 console.log(
   'LiveSplit: right click → Control → Start TCP Server (port 16834)',
 );
-console.log(
-  'Bar: big Start button = reset (does nothing if idle), wheel click = start/pause/resume (Back closes overlay — ignored)',
-);
 
 await connectBar();
-input.start();
 await connectLiveSplit();
 await loop();

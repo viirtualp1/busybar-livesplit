@@ -48,7 +48,6 @@ export class LiveSplitClient {
   private supportsAttemptCount = true;
   private supportsSplitCount = true;
   private splitNamesProbed = false;
-  private chain: Promise<void> = Promise.resolve();
 
   constructor(
     private readonly host: string,
@@ -94,59 +93,7 @@ export class LiveSplitClient {
     this.failPending(new Error('LiveSplit disconnected'));
   }
 
-  reset(): Promise<void> {
-    return this.control('reset');
-  }
-
-  pause(): Promise<void> {
-    return this.control('pause');
-  }
-
-  resume(): Promise<void> {
-    return this.control('resume');
-  }
-
-  startTimer(): Promise<void> {
-    return this.control('starttimer');
-  }
-
-  async applyWheel(): Promise<string> {
-    return this.exclusive(async () => {
-      const phase = await this.readPhase();
-      if (phase === 'Paused') {
-        this.writeCommand('resume');
-        return `resume (${phase})`;
-      }
-      if (phase === 'Running') {
-        this.writeCommand('pause');
-        return `pause (${phase})`;
-      }
-      this.writeCommand('starttimer');
-      return `starttimer (${phase})`;
-    });
-  }
-
-  async applyReset(): Promise<string | null> {
-    return this.exclusive(async () => {
-      const phase = await this.readPhase();
-      if (phase === 'NotRunning') {
-        return null;
-      }
-      this.writeCommand('reset');
-      return `reset (${phase})`;
-    });
-  }
-
-  private async readPhase(): Promise<TimerPhase> {
-    const raw = await this.send('getcurrenttimerphase');
-    return PHASES.has(raw as TimerPhase) ? (raw as TimerPhase) : 'NotRunning';
-  }
-
   async getState(): Promise<LiveSplitState> {
-    return this.exclusive(() => this.getStateUnlocked());
-  }
-
-  private async getStateUnlocked(): Promise<LiveSplitState> {
     const phaseRaw = await this.send('getcurrenttimerphase');
     const phase = PHASES.has(phaseRaw as TimerPhase)
       ? (phaseRaw as TimerPhase)
@@ -219,21 +166,6 @@ export class LiveSplitClient {
         runMs: this.runByIndex[i] ?? null,
       })),
     };
-  }
-
-  private exclusive<T>(fn: () => Promise<T>): Promise<T> {
-    const run = this.chain.then(fn, fn);
-    this.chain = run.then(
-      () => undefined,
-      () => undefined,
-    );
-    return run;
-  }
-
-  private control(command: string): Promise<void> {
-    return this.exclusive(async () => {
-      this.writeCommand(command);
-    });
   }
 
   private async refreshNames(): Promise<void> {
@@ -434,17 +366,6 @@ export class LiveSplitClient {
     });
   }
 
-  private writeCommand(command: string): void {
-    if (!this.connected) {
-      throw new Error(`LiveSplit not connected, drop ${command}`);
-    }
-    if (this.protocol === 'ws') {
-      this.ws?.send(command);
-      return;
-    }
-    this.socket?.write(`${command}\r\n`);
-  }
-
   private send(command: string): Promise<string> {
     if (!this.connected) {
       return Promise.reject(new Error('LiveSplit is not connected'));
@@ -471,15 +392,11 @@ export class LiveSplitClient {
       };
 
       this.pending.push(wrapped);
-      try {
-        this.writeCommand(command);
-      } catch (error) {
-        const index = this.pending.indexOf(wrapped);
-        if (index !== -1) {
-          this.pending.splice(index, 1);
-        }
-        clearTimeout(timeout);
-        reject(error instanceof Error ? error : new Error(String(error)));
+
+      if (this.protocol === 'ws') {
+        this.ws?.send(command);
+      } else {
+        this.socket?.write(`${command}\n`);
       }
     });
   }

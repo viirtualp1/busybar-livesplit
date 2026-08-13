@@ -39,9 +39,7 @@ export function createBusyBar(): BusyBar {
 export class BarDisplay {
   private drawing = false;
   private queued: TimerFrame | null = null;
-  private lastFrame: TimerFrame | null = null;
   private lastKey = '';
-  private holdUntil = 0;
   private warnedPriority = false;
   private clearedStale = false;
   private failedSounds = new Set<string>();
@@ -52,18 +50,9 @@ export class BarDisplay {
     await this.bar.SystemStatusGet();
   }
 
-  forceRedraw(): void {
-    this.lastKey = '';
-    this.holdUntil = Date.now() + 500;
-    if (this.lastFrame) {
-      void this.push(this.lastFrame);
-    }
-  }
-
   async push(frame: TimerFrame): Promise<void> {
-    this.lastFrame = frame;
     const key = frameKey(frame);
-    if (key === this.lastKey && Date.now() >= this.holdUntil) {
+    if (key === this.lastKey) {
       return;
     }
 

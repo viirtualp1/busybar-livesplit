@@ -21,26 +21,11 @@ LiveSplit timer on a [BUSY Bar](https://busy.app/)
 - Short LED flash on start / split / reset / PB
 - Quiet stock sounds: start, reset and finish **only if** the last split is done and the run is a PB
 
-**Remote**
-
-
-| Bar | LiveSplit |
-| --- | --- |
-| Start / Pause button | `reset` |
-| Wheel click | start if idle, otherwise `pause` / `resume` |
-
-Back is not mapped: firmware closes the overlay. Split / unsplit from the keyboard.
-
-
-
-
 ## Requirements
 
 - Node.js 22+
 - [LiveSplit](https://livesplit.org/) with **Control → Start TCP Server** (port `16834`)
 - BUSY Bar on USB, Wi-Fi or cloud
-
-
 
 ## Setup
 
@@ -62,14 +47,14 @@ Leave Busybar on a BUSY / CUSTOM session
 ## Bar connection
 
 
-| Mode  | `BUSY_ADDR`            | Auth                               | Buttons                        |
-| ----- | ---------------------- | ---------------------------------- | ------------------------------ |
-| USB   | `10.0.4.20`            | none                               | yes                            |
-| Wi-Fi | Bar LAN IP             | `BUSY_HTTP_PASSWORD` (HTTP Access) | yes                            |
-| Cloud | `https://api.busy.app` | `BUSY_TOKEN`                       | **no** — display / sounds only |
+| Mode  | `BUSY_ADDR`            | Auth                               |
+| ----- | ---------------------- | ---------------------------------- |
+| USB   | `10.0.4.20`            | none                               |
+| Wi-Fi | Bar LAN IP             | `BUSY_HTTP_PASSWORD` (HTTP Access) |
+| Cloud | `https://api.busy.app` | `BUSY_TOKEN`                       |
 
 
-**Wi-Fi (buttons):** Bar and the PC running this process must be on the same network. `BUSY_ADDR` is the **Bar’s** IP, not the Windows PC
+**Wi-Fi:** Bar and the PC running this process must be on the same network. `BUSY_ADDR` is the **Bar’s** IP, not the Windows PC
 
 1. Plug USB once, open `http://10.0.4.20` → **Network**.
 2. Connect the Bar to Wi-Fi. Copy its LAN IP (e.g. `192.168.1.42`).
@@ -105,13 +90,9 @@ Right-click LiveSplit → **Control → Start TCP Server**. Default port is `168
 | `DRAW_PRIORITY`      | `40`                                                     | Must be ≥ the app on screen; BUSY/CUSTOM session is 90 |
 
 
-
-
 ## Troubleshooting
 
-`LiveSplit timeout` — TCP Server is not running, wrong host/port, or a command with no reply was sent as a query. Restart LiveSplit’s server and this process
-
-**Bar connected, no buttons** — `BUSY_ADDR` is cloud. Use USB `10.0.4.20` or the Bar’s Wi-Fi IP
+`LiveSplit timeout` — TCP Server is not running, or the host/port is wrong. Restart LiveSplit’s server and this process
 
 **Draws ignored / 409** — a BUSY or CUSTOM session is on screen. Stop it, or raise `DRAW_PRIORITY` (session is 90)
 
