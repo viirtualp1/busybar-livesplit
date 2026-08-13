@@ -4,7 +4,8 @@ export const FRONT = {
   timeX: 36,
   timeY: 0,
   splitY: 11,
-  deltaWidth: 16,
+  /** Five glyphs wide: the longest delta the formatter can produce. */
+  deltaWidth: 20,
 } as const;
 
 const BACK_HEIGHT = 80;
@@ -33,7 +34,7 @@ export type BarFont = 'tiny' | 'small' | 'bold';
  * than its box.
  */
 export const FONT_WIDTH: Record<BarFont, number> = {
-  tiny: 3,
+  tiny: 4,
   small: 4,
   bold: 8,
 };

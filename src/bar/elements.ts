@@ -45,7 +45,7 @@ export function frontElements(frame: TimerFrame): Array<TextElement | RectangleE
     {
       id: 'delta',
       type: 'text',
-      text: hasDelta ? frame.deltaText : ' ',
+      text: hasDelta ? clipToWidth(frame.deltaText, FRONT.deltaWidth, 'tiny') : ' ',
       font: 'tiny',
       color: hasDelta ? frame.deltaColor : COLORS.transparent,
       display: 'front',

@@ -126,14 +126,6 @@ test('a split lost against the PB stays red, not gold', () => {
   assert.equal(frame.deltaColor, COLORS.behindLosing);
 });
 
-test('a long split name is cut with dots', () => {
-  const frame = buildFrame(
-    makeSnapshot({ phase: 'Running', splitName: 'Underground Lake' }),
-    options,
-  );
-  assert.equal(frame.splitText, 'Undergro...');
-});
-
 test('paused keeps the split name and dims it', () => {
   const frame = buildFrame(makeSnapshot({ phase: 'Paused', splitName: 'Boss' }), options);
   assert.equal(frame.splitText, 'Boss');

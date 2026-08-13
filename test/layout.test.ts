@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { BACK, clipToWidth, FRONT, rowY, textWidth } from '../src/bar/layout.js';
+import { MAX_DELTA_CHARS } from '../src/view/time.js';
 
 const LONGEST_SPLIT_TIME = '1:05:30';
 
@@ -29,15 +30,23 @@ test('short text is left alone', () => {
 
 test('long text is truncated to fit its box', () => {
   const clipped = clipToWidth('A very long split name', 24, 'tiny');
-  assert.equal(clipped, 'A very..');
+  assert.equal(clipped, 'A ve..');
   assert.ok(textWidth(clipped, 'tiny') <= 24);
 });
 
 test('a tiny box still returns something drawable', () => {
-  assert.equal(clipToWidth('abcdef', 6, 'tiny'), 'ab');
+  assert.equal(clipToWidth('abcdef', 8, 'tiny'), 'ab');
   assert.equal(clipToWidth('abcdef', 1, 'tiny'), 'a');
 });
 
 test('the delta slot leaves room for the split name', () => {
   assert.ok(FRONT.deltaWidth < FRONT.width);
+});
+
+test('the widest delta fits its slot', () => {
+  const widest = '+'.padEnd(MAX_DELTA_CHARS, '9');
+  assert.ok(
+    textWidth(widest, 'tiny') <= FRONT.deltaWidth,
+    `${widest} needs ${textWidth(widest, 'tiny')}px, slot is ${FRONT.deltaWidth}px`,
+  );
 });

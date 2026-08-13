@@ -41,7 +41,12 @@ export function formatSplitTime(ms: number | null): string {
   return `${sign}${seconds}.${tenths}`;
 }
 
-/** Hours collapse to `h:mm` because the delta only gets a 16 px slot on the front. */
+/**
+ * Never longer than `MAX_DELTA_CHARS`, so it always fits the slot next to the
+ * split name: big gaps drop to whole minutes or hours instead of growing wider.
+ */
+export const MAX_DELTA_CHARS = 5;
+
 export function formatDelta(ms: number): string {
   const sign = ms < 0 ? '-' : '+';
   const abs = Math.abs(ms);
@@ -49,8 +54,14 @@ export function formatDelta(ms: number): string {
   const minutes = Math.floor((abs % HOUR_MS) / MINUTE_MS);
   const seconds = Math.floor((abs % MINUTE_MS) / 1000);
 
+  if (hours >= 10) {
+    return `${sign}${hours}h`;
+  }
   if (hours > 0) {
     return `${sign}${hours}:${pad(minutes)}`;
+  }
+  if (minutes >= 10) {
+    return `${sign}${minutes}m`;
   }
   if (minutes > 0) {
     return `${sign}${minutes}:${pad(seconds)}`;

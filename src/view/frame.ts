@@ -4,7 +4,6 @@ import { isPersonalBest } from '../domain/events.js';
 import { isGoldSegment } from '../domain/gold.js';
 import type { RunSnapshot, SplitInfo } from '../livesplit/types.js';
 import { COLORS } from './colors.js';
-import { truncateName } from './text.js';
 import { formatDelta, formatSplitTime, formatTimer } from './time.js';
 
 export type BackRow = {
@@ -44,7 +43,6 @@ export function buildFrame(snapshot: RunSnapshot, options: FrameOptions): TimerF
   const timeColor = timerColor(snapshot, liveDeltaMs);
   const deltaMs = displayedDelta(snapshot, liveDeltaMs);
   const attemptText = `#${snapshot.attemptCount}`;
-  const splitName = truncateName(snapshot.splitName);
   // Gold describes the completed segment, so it may only tint that split's delta.
   const goldDelta = gold && deltaMs !== null && deltaMs === snapshot.lastDeltaMs;
 
@@ -71,20 +69,20 @@ export function buildFrame(snapshot: RunSnapshot, options: FrameOptions): TimerF
   if (snapshot.phase === 'Paused') {
     return {
       ...base,
-      splitText: splitName || 'PAUSED',
+      splitText: snapshot.splitName || 'PAUSED',
       splitColor: COLORS.paused,
     };
   }
   if (snapshot.phase === 'Ended') {
     return {
       ...base,
-      splitText: splitName || 'DONE',
+      splitText: snapshot.splitName || 'DONE',
       splitColor: timeColor,
     };
   }
   return {
     ...base,
-    splitText: splitName || 'RUNNING',
+    splitText: snapshot.splitName || 'RUNNING',
     splitColor: COLORS.white,
   };
 }
