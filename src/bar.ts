@@ -3,6 +3,9 @@ import { config } from './config.js';
 import type { TimerFrame } from './format.js';
 
 const APP_NAME = 'livesplit';
+const FRONT_WIDTH = 72;
+const TIMER_HEIGHT = 10;
+const SPLIT_Y = 11;
 
 export function createBusyBar(): BusyBar {
   return new BusyBar({
@@ -20,6 +23,7 @@ export class BarDisplay {
   private queued: TimerFrame | null = null;
   private lastKey = '';
   private warnedPriority = false;
+  private clearedStale = false;
 
   constructor(private readonly bar: BusyBar) {}
 
@@ -28,7 +32,7 @@ export class BarDisplay {
   }
 
   async push(frame: TimerFrame): Promise<void> {
-    const key = `${frame.timeText}|${frame.subText}|${frame.timeColor}|${frame.subColor}`;
+    const key = frameKey(frame);
     if (key === this.lastKey) {
       return;
     }
@@ -44,7 +48,7 @@ export class BarDisplay {
         const next = this.queued;
         this.queued = null;
         await this.draw(next);
-        this.lastKey = `${next.timeText}|${next.subText}|${next.timeColor}|${next.subColor}`;
+        this.lastKey = frameKey(next);
       }
     } finally {
       this.drawing = false;
@@ -54,19 +58,43 @@ export class BarDisplay {
   async clear(): Promise<void> {
     this.lastKey = '';
     this.queued = null;
+    this.clearedStale = false;
     await this.bar.DisplayClear({ application_name: APP_NAME });
   }
 
   private async draw(frame: TimerFrame): Promise<void> {
+    if (!this.clearedStale) {
+      await this.bar.DisplayClear({ application_name: APP_NAME });
+      this.clearedStale = true;
+    }
+    const deltaWidth = frame.deltaText ? frame.deltaText.length * 4 + 2 : 0;
+    const splitX = Math.min(deltaWidth, 40);
+    const splitWidth = Math.max(FRONT_WIDTH - splitX, 24);
+
     const payload: DisplayDrawParams = {
       application_name: APP_NAME,
       priority: config.drawPriority,
       elements: [
         {
+          id: 'mask',
+          type: 'rectangle',
+          display: 'front',
+          align: 'top_left',
+          x: 0,
+          y: 0,
+          width: FRONT_WIDTH,
+          height: TIMER_HEIGHT,
+          fill: 'solid',
+          fill_colors: ['#000000FF'],
+          border_width: 0,
+          border_color: '#00000000',
+          timeout: 0,
+        },
+        {
           id: 'time',
           type: 'text',
           text: frame.timeText,
-          font: 'large',
+          font: 'bold',
           color: frame.timeColor,
           display: 'front',
           align: 'top_mid',
@@ -75,17 +103,29 @@ export class BarDisplay {
           timeout: 0,
         },
         {
-          id: 'sub',
+          id: 'delta',
           type: 'text',
-          text: frame.subText,
-          font: 'small',
-          color: frame.subColor,
+          text: frame.deltaText || ' ',
+          font: 'tiny',
+          color: frame.deltaColor,
           display: 'front',
-          align: 'bottom_left',
+          align: 'top_left',
           x: 1,
-          y: 15,
-          width: 70,
-          scroll_rate: 800,
+          y: SPLIT_Y,
+          timeout: 0,
+        },
+        {
+          id: 'split',
+          type: 'text',
+          text: frame.splitText || ' ',
+          font: 'tiny',
+          color: frame.splitColor,
+          display: 'front',
+          align: 'top_left',
+          x: splitX,
+          y: SPLIT_Y,
+          width: splitWidth,
+          scroll_rate: 700,
           timeout: 0,
         },
       ],
@@ -107,6 +147,17 @@ export class BarDisplay {
       throw error;
     }
   }
+}
+
+function frameKey(frame: TimerFrame): string {
+  return [
+    frame.timeText,
+    frame.deltaText,
+    frame.splitText,
+    frame.timeColor,
+    frame.deltaColor,
+    frame.splitColor,
+  ].join('|');
 }
 
 function isLowPriority(error: unknown): boolean {

@@ -11,47 +11,62 @@ export const COLORS = {
 
 export type TimerFrame = {
   timeText: string;
-  subText: string;
+  deltaText: string;
+  splitText: string;
   timeColor: string;
-  subColor: string;
+  deltaColor: string;
+  splitColor: string;
 };
 
 export function buildFrame(state: LiveSplitState): TimerFrame {
   const timeText = formatTimer(state.timeMs, state.phase);
   const timeColor = colorForPhase(state.phase, state.deltaMs);
+  const deltaText =
+    state.deltaMs !== null && state.phase !== 'NotRunning'
+      ? formatDelta(state.deltaMs)
+      : '';
+  const deltaColor = colorForDelta(state.phase, state.deltaMs);
 
   if (state.phase === 'NotRunning') {
     return {
       timeText,
-      subText: 'READY',
+      deltaText: '',
+      splitText: 'READY',
       timeColor: COLORS.muted,
-      subColor: COLORS.muted,
+      deltaColor: COLORS.muted,
+      splitColor: COLORS.muted,
     };
   }
 
   if (state.phase === 'Paused') {
     return {
       timeText,
-      subText: subtitle(state, 'PAUSED'),
+      deltaText,
+      splitText: state.splitName || 'PAUSED',
       timeColor: COLORS.paused,
-      subColor: COLORS.paused,
+      deltaColor: COLORS.paused,
+      splitColor: COLORS.paused,
     };
   }
 
   if (state.phase === 'Ended') {
     return {
       timeText,
-      subText: subtitle(state, 'DONE'),
+      deltaText,
+      splitText: state.splitName || 'DONE',
       timeColor: COLORS.gold,
-      subColor: COLORS.gold,
+      deltaColor: COLORS.gold,
+      splitColor: COLORS.gold,
     };
   }
 
   return {
     timeText,
-    subText: subtitle(state, state.splitName || 'RUNNING'),
+    deltaText,
+    splitText: state.splitName || 'RUNNING',
     timeColor,
-    subColor: timeColor,
+    deltaColor,
+    splitColor: COLORS.white,
   };
 }
 
@@ -87,19 +102,6 @@ export function formatDelta(ms: number): string {
   return `${sign}${seconds}.${pad(hundredths)}`;
 }
 
-function subtitle(state: LiveSplitState, fallback: string): string {
-  const parts: string[] = [];
-  if (state.deltaMs !== null && state.phase !== 'NotRunning') {
-    parts.push(formatDelta(state.deltaMs));
-  }
-  if (state.splitName) {
-    parts.push(state.splitName);
-  } else {
-    parts.push(fallback);
-  }
-  return parts.join(' ');
-}
-
 function colorForPhase(phase: TimerPhase, deltaMs: number | null): string {
   if (phase === 'Ended') {
     return COLORS.gold;
@@ -117,6 +119,13 @@ function colorForPhase(phase: TimerPhase, deltaMs: number | null): string {
     return COLORS.behind;
   }
   return COLORS.white;
+}
+
+function colorForDelta(phase: TimerPhase, deltaMs: number | null): string {
+  if (phase === 'Paused') {
+    return COLORS.paused;
+  }
+  return colorForPhase(phase, deltaMs);
 }
 
 function pad(value: number): string {
