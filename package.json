@@ -1,0 +1,22 @@
+{
+  "name": "busyapp-livesplit",
+  "version": "1.0.0",
+  "description": "Sync LiveSplit speedrun timer to BUSY Bar",
+  "license": "ISC",
+  "author": "viirtualp1",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "npm run build && node dist/index.js",
+    "dev": "tsx src/index.ts"
+  },
+  "dependencies": {
+    "@busy-app/busy-lib": "^0.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.2.0",
+    "tsx": "^4.20.3",
+    "typescript": "^5.9.2"
+  }
+}

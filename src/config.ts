@@ -1,0 +1,64 @@
+import { existsSync, readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
+function loadEnvFile(filePath: string): void {
+  if (!existsSync(filePath)) {
+    return;
+  }
+
+  for (const rawLine of readFileSync(filePath, 'utf8').split('\n')) {
+    const line = rawLine.trim();
+    if (!line || line.startsWith('#')) {
+      continue;
+    }
+
+    const eq = line.indexOf('=');
+    if (eq === -1) {
+      continue;
+    }
+
+    const key = line.slice(0, eq).trim();
+    let value = line.slice(eq + 1).trim();
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+
+    if (process.env[key] === undefined) {
+      process.env[key] = value;
+    }
+  }
+}
+
+function envString(name: string, fallback: string): string {
+  return process.env[name]?.trim() || fallback;
+}
+
+function envNumber(name: string, fallback: number): number {
+  const raw = process.env[name]?.trim();
+  if (!raw) {
+    return fallback;
+  }
+  const value = Number(raw);
+  return Number.isFinite(value) ? value : fallback;
+}
+
+loadEnvFile(resolve(process.cwd(), '.env'));
+
+const token = process.env.BUSY_TOKEN?.trim() || '';
+const httpPassword = process.env.BUSY_HTTP_PASSWORD?.trim() || '';
+
+export const config = {
+  busyAddr: envString(
+    'BUSY_ADDR',
+    token ? 'https://api.busy.app' : '10.0.4.20',
+  ),
+  busyToken: token,
+  busyHttpPassword: httpPassword,
+  liveSplitHost: envString('LIVESPLIT_HOST', '127.0.0.1'),
+  liveSplitPort: envNumber('LIVESPLIT_PORT', 16834),
+  pollMs: envNumber('POLL_MS', 80),
+  drawPriority: envNumber('DRAW_PRIORITY', 40),
+};
