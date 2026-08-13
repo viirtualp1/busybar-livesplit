@@ -33,6 +33,7 @@ function triggerFlash(kind: FlashKind): void {
 
 function onBarInput(event: BarInput): void {
   if (!livesplit.connected) {
+    console.warn(`Bar ${event.kind} ignored: LiveSplit is not connected`);
     return;
   }
   if (event.kind === 'ok') {
@@ -40,11 +41,12 @@ function onBarInput(event: BarInput): void {
       livesplit.resume();
     } else if (lastPhase === 'Running') {
       livesplit.pause();
+    } else {
+      livesplit.startTimer();
     }
     return;
   }
   if (event.kind === 'back') {
-    livesplit.unsplit();
     display.forceRedraw();
     return;
   }
@@ -189,7 +191,7 @@ console.log(
   'LiveSplit: right click → Control → Start TCP Server (port 16834)',
 );
 console.log(
-  'Bar: start = reset, wheel click = pause, back = unsplit',
+  'Bar: start = reset, wheel click = start/pause/resume (Back closes overlay — ignored)',
 );
 
 await connectBar();

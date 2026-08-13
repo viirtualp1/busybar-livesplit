@@ -93,10 +93,6 @@ export class LiveSplitClient {
     this.failPending(new Error('LiveSplit disconnected'));
   }
 
-  unsplit(): void {
-    this.sendNoReply('unsplit');
-  }
-
   reset(): void {
     this.sendNoReply('reset');
   }
@@ -107,6 +103,10 @@ export class LiveSplitClient {
 
   resume(): void {
     this.sendNoReply('resume');
+  }
+
+  startTimer(): void {
+    this.sendNoReply('starttimer');
   }
 
   async getState(): Promise<LiveSplitState> {

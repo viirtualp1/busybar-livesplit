@@ -24,11 +24,12 @@ LiveSplit timer on a [BUSY Bar](https://busy.app/)
 **Remote**
 
 
-| Bar                  | LiveSplit          |
-| -------------------- | ------------------ |
-| Start / Pause button | `reset`            |
-| Wheel click          | `pause` / `resume` |
-| Back                 | `unsplit`          |
+| Bar | LiveSplit |
+| --- | --- |
+| Start / Pause button | `reset` |
+| Wheel click | start if idle, otherwise `pause` / `resume` |
+
+Back is not mapped: firmware closes the overlay. Split / unsplit from the keyboard.
 
 
 

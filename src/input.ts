@@ -37,7 +37,9 @@ export class BarInputListener {
     while (!this.stopped) {
       try {
         await this.connect();
-      } catch {
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error);
+        console.warn(`Bar input reconnecting: ${reason}`);
         await sleep(2000);
       }
     }
@@ -60,17 +62,11 @@ export class BarInputListener {
 
       ws.addEventListener('open', () => {
         clearTimeout(timeout);
-        console.log('Bar input connected (start = reset, wheel = pause, back = unsplit)');
+        console.log('Bar input connected (start = reset, wheel = start/pause)');
       });
 
       ws.addEventListener('message', (event) => {
-        const data = event.data;
-        if (!(data instanceof ArrayBuffer)) {
-          return;
-        }
-        for (const input of decodeInputs(new Uint8Array(data))) {
-          this.dispatch(input);
-        }
+        void this.handleMessage(event.data);
       });
 
       ws.addEventListener('close', () => {
@@ -102,7 +98,18 @@ export class BarInputListener {
       }
       this.lastBack = now;
     }
+    console.log(`Bar ${input.kind}`);
     this.onInput(input);
+  }
+
+  private async handleMessage(data: unknown): Promise<void> {
+    const bytes = await toBytes(data);
+    if (!bytes) {
+      return;
+    }
+    for (const input of decodeInputs(bytes)) {
+      this.dispatch(input);
+    }
   }
 }
 
@@ -129,6 +136,19 @@ export function barInputUrl(
     url.searchParams.set('x-api-token', token);
   }
   return url.toString();
+}
+
+function toBytes(data: unknown): Promise<Uint8Array | null> | Uint8Array | null {
+  if (data instanceof ArrayBuffer) {
+    return new Uint8Array(data);
+  }
+  if (ArrayBuffer.isView(data)) {
+    return new Uint8Array(data.buffer, data.byteOffset, data.byteLength);
+  }
+  if (typeof Blob !== 'undefined' && data instanceof Blob) {
+    return data.arrayBuffer().then((buffer) => new Uint8Array(buffer));
+  }
+  return null;
 }
 
 function decodeInputs(bytes: Uint8Array): BarInput[] {
@@ -180,7 +200,10 @@ function parseInputEvent(bytes: Uint8Array): BarInput | null {
   if (encoder !== null && encoder !== 0) {
     return { kind: 'encoder', delta: encoder };
   }
-  if (button === null || action !== 0) {
+  if (button === null) {
+    return null;
+  }
+  if (action !== null && action !== 0) {
     return null;
   }
   if (button === 0) {
