@@ -6,7 +6,8 @@ export type LiveSplitProtocol = 'auto' | 'tcp' | 'ws';
 export type LiveSplitState = {
   phase: TimerPhase;
   timeMs: number;
-  deltaMs: number | null;
+  lastDeltaMs: number | null;
+  liveDeltaMs: number | null;
   splitName: string;
   splitIndex: number;
 };
@@ -81,21 +82,30 @@ export class LiveSplitClient {
     const splitIndex = Number.parseInt(await this.send('getsplitindex'), 10);
     const index = Number.isFinite(splitIndex) ? splitIndex : -1;
 
-    let deltaMs: number | null = null;
+    let lastDeltaMs: number | null = null;
+    let liveDeltaMs: number | null = null;
     let splitName = '';
-    if (phase !== 'NotRunning') {
-      deltaMs = parseLiveSplitTime(await this.send('getdelta'));
-    }
+
     if (phase === 'Running' || phase === 'Paused') {
+      lastDeltaMs = parseLiveSplitTime(await this.send('getdelta'));
+      const comparisonMs = parseLiveSplitTime(
+        await this.send('getcomparisonsplittime'),
+      );
+      if (comparisonMs !== null) {
+        liveDeltaMs = timeMs - comparisonMs;
+      }
       splitName = sanitizeSplitName(await this.send('getcurrentsplitname'));
     } else if (phase === 'Ended') {
+      lastDeltaMs = parseLiveSplitTime(await this.send('getdelta'));
+      liveDeltaMs = lastDeltaMs;
       splitName = sanitizeSplitName(await this.send('getprevioussplitname'));
     }
 
     return {
       phase,
       timeMs,
-      deltaMs,
+      lastDeltaMs,
+      liveDeltaMs,
       splitName,
       splitIndex: index,
     };

@@ -2,11 +2,14 @@ import type { LiveSplitState, TimerPhase } from './livesplit.js';
 
 export const COLORS = {
   white: '#FFFFFFFF',
-  muted: '#9AA0A6FF',
-  ahead: '#32D74BFF',
-  behind: '#FF453AFF',
-  gold: '#FFD60AFF',
-  paused: '#FFD60AFF',
+  aheadGaining: '#36CC00FF',
+  aheadLosing: '#7FD161FF',
+  behindGaining: '#D16161FF',
+  behindLosing: '#CC0000FF',
+  personalBest: '#14A5FFFF',
+  bestSegment: '#FFD400FF',
+  notRunning: '#ABABABFF',
+  paused: '#7A7A7AFF',
 } as const;
 
 export type TimerFrame = {
@@ -20,21 +23,20 @@ export type TimerFrame = {
 
 export function buildFrame(state: LiveSplitState): TimerFrame {
   const timeText = formatTimer(state.timeMs, state.phase);
-  const timeColor = colorForPhase(state.phase, state.deltaMs);
+  const timeColor = timerColor(state);
+  const deltaMs = state.liveDeltaMs ?? state.lastDeltaMs;
   const deltaText =
-    state.deltaMs !== null && state.phase !== 'NotRunning'
-      ? formatDelta(state.deltaMs)
-      : '';
-  const deltaColor = colorForDelta(state.phase, state.deltaMs);
+    deltaMs !== null && state.phase !== 'NotRunning' ? formatDelta(deltaMs) : '';
+  const deltaColor = timeColor;
 
   if (state.phase === 'NotRunning') {
     return {
       timeText,
       deltaText: '',
       splitText: 'READY',
-      timeColor: COLORS.muted,
-      deltaColor: COLORS.muted,
-      splitColor: COLORS.muted,
+      timeColor: COLORS.notRunning,
+      deltaColor: COLORS.notRunning,
+      splitColor: COLORS.notRunning,
     };
   }
 
@@ -43,8 +45,8 @@ export function buildFrame(state: LiveSplitState): TimerFrame {
       timeText,
       deltaText,
       splitText: state.splitName || 'PAUSED',
-      timeColor: COLORS.paused,
-      deltaColor: COLORS.paused,
+      timeColor,
+      deltaColor,
       splitColor: COLORS.paused,
     };
   }
@@ -54,9 +56,9 @@ export function buildFrame(state: LiveSplitState): TimerFrame {
       timeText,
       deltaText,
       splitText: state.splitName || 'DONE',
-      timeColor: COLORS.gold,
-      deltaColor: COLORS.gold,
-      splitColor: COLORS.gold,
+      timeColor,
+      deltaColor,
+      splitColor: timeColor,
     };
   }
 
@@ -102,30 +104,38 @@ export function formatDelta(ms: number): string {
   return `${sign}${seconds}.${pad(hundredths)}`;
 }
 
-function colorForPhase(phase: TimerPhase, deltaMs: number | null): string {
-  if (phase === 'Ended') {
-    return COLORS.gold;
+function timerColor(state: LiveSplitState): string {
+  if (state.phase === 'NotRunning') {
+    return COLORS.notRunning;
   }
-  if (phase === 'Paused') {
-    return COLORS.paused;
+
+  if (state.phase === 'Ended') {
+    if (state.liveDeltaMs === null || state.liveDeltaMs < 0) {
+      return COLORS.personalBest;
+    }
+    return COLORS.behindLosing;
   }
-  if (deltaMs === null || phase === 'NotRunning') {
-    return COLORS.white;
-  }
-  if (deltaMs < 0) {
-    return COLORS.ahead;
-  }
-  if (deltaMs > 0) {
-    return COLORS.behind;
-  }
-  return COLORS.white;
+
+  return splitColor(state.liveDeltaMs, state.lastDeltaMs);
 }
 
-function colorForDelta(phase: TimerPhase, deltaMs: number | null): string {
-  if (phase === 'Paused') {
-    return COLORS.paused;
+function splitColor(liveDeltaMs: number | null, lastDeltaMs: number | null): string {
+  if (liveDeltaMs === null || liveDeltaMs === 0) {
+    return COLORS.aheadGaining;
   }
-  return colorForPhase(phase, deltaMs);
+
+  if (liveDeltaMs < 0) {
+    if (lastDeltaMs !== null && liveDeltaMs > lastDeltaMs) {
+      return COLORS.aheadLosing;
+    }
+    return COLORS.aheadGaining;
+  }
+
+  if (lastDeltaMs !== null && liveDeltaMs < lastDeltaMs) {
+    return COLORS.behindGaining;
+  }
+
+  return COLORS.behindLosing;
 }
 
 function pad(value: number): string {
