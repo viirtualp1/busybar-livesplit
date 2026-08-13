@@ -41,17 +41,49 @@ test('a finished run is cyan on a pb and red otherwise', () => {
   assert.equal(lost.timeColor, COLORS.behindLosing);
 });
 
-test('gold paints the delta yellow', () => {
+test('gold paints the completed split delta yellow', () => {
   const frame = buildFrame(
     makeSnapshot({
       phase: 'Running',
-      liveDeltaMs: 4000,
-      liveSegmentMs: 3000,
-      bestSegmentMs: 5000,
+      lastDeltaMs: -1000,
+      lastSegmentMs: 3000,
+      lastBestSegmentMs: 5000,
     }),
     options,
   );
+  assert.equal(frame.deltaText, '-1.0');
   assert.equal(frame.deltaColor, COLORS.bestSegment);
+});
+
+/** A gold segment says nothing about the time being lost in the current one. */
+test('a live delta is coloured by the delta, not by the last gold', () => {
+  const frame = buildFrame(
+    makeSnapshot({
+      phase: 'Running',
+      lastDeltaMs: -1000,
+      liveDeltaMs: 2700,
+      lastSegmentMs: 3000,
+      lastBestSegmentMs: 5000,
+    }),
+    options,
+  );
+  assert.equal(frame.deltaText, '+2.7');
+  assert.equal(frame.deltaColor, COLORS.behindLosing);
+});
+
+test('a split lost against the PB stays red, not gold', () => {
+  const frame = buildFrame(
+    makeSnapshot({
+      phase: 'Running',
+      lastDeltaMs: 2700,
+      liveDeltaMs: 2700,
+      lastSegmentMs: 6000,
+      lastBestSegmentMs: 5000,
+    }),
+    options,
+  );
+  assert.equal(frame.deltaText, '+2.7');
+  assert.equal(frame.deltaColor, COLORS.behindLosing);
 });
 
 test('paused keeps the split name and dims it', () => {
@@ -99,9 +131,20 @@ test('the running split shows the live time, past splits their own', () => {
 });
 
 test('the timer advances between polls without a new snapshot', () => {
-  const snapshot = makeSnapshot({ phase: 'Running', timeMs: 5000, receivedAt: 0 });
+  const snapshot = makeSnapshot({
+    phase: 'Running',
+    timeMs: 5000,
+    receivedAt: 0,
+    advancing: true,
+  });
   assert.equal(buildFrame(snapshot, options).timeText, '0:05.00');
   assert.equal(buildFrame(snapshot, { ...options, nowMs: 250 }).timeText, '0:05.25');
+});
+
+test('a stalled run clock keeps the same time on every frame', () => {
+  const snapshot = makeSnapshot({ phase: 'Running', timeMs: 5000, receivedAt: 0 });
+  assert.equal(buildFrame(snapshot, options).timeText, '0:05.00');
+  assert.equal(buildFrame(snapshot, { ...options, nowMs: 250 }).timeText, '0:05.00');
 });
 
 test('flash events map to led colours', () => {

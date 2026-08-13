@@ -10,7 +10,7 @@ LiveSplit timer on a [BUSY Bar](https://busy.app/)
 
 - Bold run time, LiveSplit colors (ahead / behind gaining / losing, cyan PB)
 - Attempt count, current split name + compact delta (`-1.2` / `+3.4`) on the bottom row
-- Gold: delta turns yellow when the **current segment** is faster than Best Segments
+- Gold: the delta turns yellow when the **segment just completed** beat Best Segments
 
 **Back**
 
@@ -118,6 +118,11 @@ Layout: `src/livesplit` speaks the protocol, `src/domain` holds the run logic
 timeout drops the connection on purpose (replies are matched by order, so a late one
 would corrupt every following read) and the poll loop reconnects by itself.
 
+**Time jitters while the run is stopped** — the hundredths are computed locally
+between polls, which only happens once two polls agree the run clock moves. A timer
+that LiveSplit reports as Running while game time is paused (autosplitter, loading
+times) therefore stays put instead of racing ahead and snapping back.
+
 **Draws ignored / 409** — a BUSY or CUSTOM session owns the screen. Stop it or raise
 `DRAW_PRIORITY` (a session is 90).
 
@@ -128,8 +133,9 @@ Cloud: valid `BUSY_TOKEN`. A 403 means the password is missing or wrong.
 which means the old LiveSplit.Server component is in use. Start the built-in server
 (**Control → Start TCP Server**) on a current LiveSplit build instead.
 
-**No gold** — add a Best Segments comparison in LiveSplit. A split that was skipped
-or passed between two polls has an unknown segment length and never lights up.
+**No gold** — add a Best Segments comparison in LiveSplit. Gold is judged on the
+segment that just ended, and a split this run entered mid-way or skipped has an
+unknown segment length, so it never lights up.
 
 **No sound** — check the Bar is not muted. The finish sound only plays on a PB
 (delta `< 0`, or no comparison at all on a first complete run).

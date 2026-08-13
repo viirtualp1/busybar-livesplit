@@ -1,8 +1,4 @@
-import {
-  interpolatedDeltaMs,
-  interpolatedSegmentMs,
-  interpolatedTimeMs,
-} from '../domain/clock.js';
+import { interpolatedDeltaMs, interpolatedTimeMs } from '../domain/clock.js';
 import type { RunEvent } from '../domain/events.js';
 import { isPersonalBest } from '../domain/events.js';
 import { isGoldSegment } from '../domain/gold.js';
@@ -42,19 +38,20 @@ export function buildFrame(snapshot: RunSnapshot, options: FrameOptions): TimerF
 
   const timeMs = interpolatedTimeMs(snapshot, nowMs);
   const liveDeltaMs = interpolatedDeltaMs(snapshot, nowMs);
-  const segmentMs = interpolatedSegmentMs(snapshot, nowMs);
-  const gold = isGoldSegment(snapshot, segmentMs);
+  const gold = isGoldSegment(snapshot);
 
   const timeColor = timerColor(snapshot, liveDeltaMs);
   const deltaMs = displayedDelta(snapshot, liveDeltaMs);
   const attemptText = `#${snapshot.attemptCount}`;
+  // Gold describes the completed segment, so it may only tint that split's delta.
+  const goldDelta = gold && deltaMs !== null && deltaMs === snapshot.lastDeltaMs;
 
   const base = {
     timeText: formatTimer(timeMs),
     attemptText,
     deltaText: deltaMs === null ? '' : formatDelta(deltaMs),
     timeColor,
-    deltaColor: gold ? COLORS.bestSegment : timeColor,
+    deltaColor: goldDelta ? COLORS.bestSegment : timeColor,
     ledColor: ledForEvent(flash),
     backHeader: attemptText,
     backRows: buildBackRows(snapshot, timeMs, gold, maxRows),
@@ -151,6 +148,7 @@ function buildBackRows(
   const current = Math.max(0, snapshot.splitIndex);
   const start = Math.max(0, Math.min(current - 1, Math.max(0, splits.length - maxRows)));
   const end = Math.min(splits.length, start + maxRows);
+  const goldRow = gold ? finishedIndex(snapshot, splits.length) : -1;
 
   return splits.slice(start, end).map((split, offset) => {
     const index = start + offset;
@@ -160,9 +158,21 @@ function buildBackRows(
       time: formatSplitTime(rowTime(snapshot, split, isCurrent, timeMs)),
       pb: formatSplitTime(split.pbMs),
       current: isCurrent,
-      color: isCurrent ? (gold ? COLORS.bestSegment : COLORS.highlight) : COLORS.white,
+      color: rowColor(index === goldRow, isCurrent),
     };
   });
+}
+
+function rowColor(isGold: boolean, isCurrent: boolean): string {
+  if (isGold) {
+    return COLORS.bestSegment;
+  }
+  return isCurrent ? COLORS.highlight : COLORS.white;
+}
+
+/** The split whose segment was just completed: the last one once the run ends. */
+function finishedIndex(snapshot: RunSnapshot, count: number): number {
+  return snapshot.phase === 'Ended' ? count - 1 : snapshot.splitIndex - 1;
 }
 
 function isCurrentRow(snapshot: RunSnapshot, index: number, count: number): boolean {

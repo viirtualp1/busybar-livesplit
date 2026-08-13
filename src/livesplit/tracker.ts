@@ -19,6 +19,24 @@ export type CommandChannel = {
 
 const RUN_RECHECK_MS = 2000;
 
+/** Well below 1 so a slow reply cannot be mistaken for a stopped timer. */
+const MIN_PROGRESS_RATE = 0.5;
+
+function segmentLength(cumulative: Array<number | null>, index: number): number | null {
+  if (index < 0) {
+    return null;
+  }
+  const at = cumulative[index] ?? null;
+  if (at === null) {
+    return null;
+  }
+  if (index === 0) {
+    return at;
+  }
+  const before = cumulative[index - 1] ?? null;
+  return before === null ? null : at - before;
+}
+
 /**
  * Turns the request/response protocol into a snapshot, keeping everything that
  * only changes on a split (comparison times, names, deltas) in a cache so a
@@ -35,10 +53,14 @@ export class RunTracker {
   private phase: TimerPhase | null = null;
   private index: number | null = null;
   private splitName = '';
+  private advancing = false;
+  private previousTimeMs: number | null = null;
+  private previousReceivedAt = 0;
   private lastDeltaMs: number | null = null;
   private previousCumulativeMs: number | null = null;
   private comparisonMs: number | null = null;
-  private bestSegmentMs: number | null = null;
+  private lastSegmentMs: number | null = null;
+  private lastBestSegmentMs: number | null = null;
 
   constructor(
     private readonly channel: CommandChannel,
@@ -57,6 +79,9 @@ export class RunTracker {
     this.attemptCount = 0;
     this.phase = null;
     this.index = null;
+    this.advancing = false;
+    this.previousTimeMs = null;
+    this.previousReceivedAt = 0;
     this.clearSplitCache();
   }
 
@@ -75,6 +100,8 @@ export class RunTracker {
     const indexRaw = await this.ask('getsplitindex');
     const parsedIndex = indexRaw === null ? Number.NaN : Number.parseInt(indexRaw, 10);
     const index = Number.isFinite(parsedIndex) ? parsedIndex : -1;
+
+    this.advancing = this.observeProgress(phase, timeMs, receivedAt);
 
     const phaseChanged = phase !== this.phase;
     const indexChanged = index !== this.index;
@@ -104,26 +131,43 @@ export class RunTracker {
           ? null
           : timeMs - this.comparisonMs;
 
-    const liveSegmentMs =
-      phase === 'Running' || phase === 'Paused'
-        ? this.previousCumulativeMs === null
-          ? null
-          : timeMs - this.previousCumulativeMs
-        : null;
-
     return {
       ...emptySnapshot(receivedAt),
       phase,
       timeMs,
+      advancing: this.advancing,
       lastDeltaMs: this.lastDeltaMs,
       liveDeltaMs,
-      liveSegmentMs,
-      bestSegmentMs: this.bestSegmentMs,
+      lastSegmentMs: this.lastSegmentMs,
+      lastBestSegmentMs: this.lastBestSegmentMs,
       splitName: this.splitName,
       splitIndex: index,
       attemptCount: this.attemptCount,
       splits: this.buildSplits(),
     };
+  }
+
+  /**
+   * A paused timer keeps answering the same time, so the display may only run
+   * ahead of a poll once two of them agree the run clock is actually moving.
+   */
+  private observeProgress(
+    phase: TimerPhase,
+    timeMs: number,
+    receivedAt: number,
+  ): boolean {
+    const previousTimeMs = this.previousTimeMs;
+    const realElapsed = receivedAt - this.previousReceivedAt;
+    this.previousTimeMs = timeMs;
+    this.previousReceivedAt = receivedAt;
+
+    if (phase !== 'Running' || previousTimeMs === null) {
+      return false;
+    }
+    if (realElapsed <= 0) {
+      return this.advancing;
+    }
+    return timeMs - previousTimeMs >= realElapsed * MIN_PROGRESS_RATE;
   }
 
   private buildSplits(): SplitInfo[] {
@@ -139,7 +183,8 @@ export class RunTracker {
     this.lastDeltaMs = null;
     this.previousCumulativeMs = null;
     this.comparisonMs = null;
-    this.bestSegmentMs = null;
+    this.lastSegmentMs = null;
+    this.lastBestSegmentMs = null;
   }
 
   private async refreshSplitCache(phase: TimerPhase, index: number): Promise<void> {
@@ -155,13 +200,14 @@ export class RunTracker {
       }
       this.splitName = sanitizeSplitName((await this.ask('getprevioussplitname')) ?? '');
       this.comparisonMs = null;
-      this.bestSegmentMs = null;
+      this.recordFinishedSegment(finished);
       return;
     }
 
     if (index > 0 && lastSplitMs !== null) {
       this.runCumulative[index - 1] = lastSplitMs;
     }
+    this.recordFinishedSegment(index - 1);
 
     this.comparisonMs = parseLiveSplitTime(
       (await this.ask('getcomparisonsplittime')) ?? '',
@@ -171,33 +217,31 @@ export class RunTracker {
     }
 
     this.splitName = sanitizeSplitName((await this.ask('getcurrentsplitname')) ?? '');
-    this.bestSegmentMs = await this.readBestSegment(index);
+    await this.cacheBestSegment(index);
   }
 
   /**
-   * Best Segments is a cumulative comparison, so the segment length needs the
-   * previous split's value. If this run never passed that split the length is
-   * unknown — reporting null keeps a skipped split from faking a gold.
+   * Both lengths come from the cumulative caches, so a split this run never
+   * passed leaves them null — which keeps a skipped split from faking a gold.
    */
-  private async readBestSegment(index: number): Promise<number | null> {
+  private recordFinishedSegment(finished: number): void {
+    this.lastSegmentMs = segmentLength(this.runCumulative, finished);
+    this.lastBestSegmentMs = segmentLength(this.bestCumulative, finished);
+  }
+
+  /** Best Segments is cumulative, so each split's value is kept for later diffs. */
+  private async cacheBestSegment(index: number): Promise<void> {
     if (index < 0) {
-      return null;
+      return;
     }
     const raw = await this.askOptional(
       'bestSegments',
       'getcomparisonsplittime Best Segments',
     );
     const cumulative = raw === null ? null : parseLiveSplitTime(raw);
-    if (cumulative === null) {
-      return null;
+    if (cumulative !== null) {
+      this.bestCumulative[index] = cumulative;
     }
-    this.bestCumulative[index] = cumulative;
-
-    if (index === 0) {
-      return cumulative;
-    }
-    const previous = this.bestCumulative[index - 1];
-    return previous === undefined || previous === null ? null : cumulative - previous;
   }
 
   private async refreshAttemptCount(): Promise<void> {

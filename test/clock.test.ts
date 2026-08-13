@@ -1,16 +1,28 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import {
-  interpolatedDeltaMs,
-  interpolatedSegmentMs,
-  interpolatedTimeMs,
-} from '../src/domain/clock.js';
+import { interpolatedDeltaMs, interpolatedTimeMs } from '../src/domain/clock.js';
 import { makeSnapshot } from './helpers.js';
 
 test('advances the timer between polls while running', () => {
-  const snapshot = makeSnapshot({ phase: 'Running', timeMs: 10_000, receivedAt: 500 });
+  const snapshot = makeSnapshot({
+    phase: 'Running',
+    timeMs: 10_000,
+    receivedAt: 500,
+    advancing: true,
+  });
   assert.equal(interpolatedTimeMs(snapshot, 500), 10_000);
   assert.equal(interpolatedTimeMs(snapshot, 580), 10_080);
+});
+
+/** A run clock that stands still under a Running phase must not be extrapolated. */
+test('freezes the timer until the polls confirm it moves', () => {
+  const snapshot = makeSnapshot({
+    phase: 'Running',
+    timeMs: 10_000,
+    receivedAt: 500,
+    advancing: false,
+  });
+  assert.equal(interpolatedTimeMs(snapshot, 5000), 10_000);
 });
 
 test('freezes the timer when not running', () => {
@@ -21,24 +33,27 @@ test('freezes the timer when not running', () => {
 });
 
 test('never goes backwards if the clock jitters', () => {
-  const snapshot = makeSnapshot({ phase: 'Running', timeMs: 10_000, receivedAt: 500 });
+  const snapshot = makeSnapshot({
+    phase: 'Running',
+    timeMs: 10_000,
+    receivedAt: 500,
+    advancing: true,
+  });
   assert.equal(interpolatedTimeMs(snapshot, 400), 10_000);
 });
 
-test('delta and segment advance with the timer', () => {
+test('the delta advances with the timer', () => {
   const snapshot = makeSnapshot({
     phase: 'Running',
     timeMs: 10_000,
     receivedAt: 0,
+    advancing: true,
     liveDeltaMs: -2000,
-    liveSegmentMs: 3000,
   });
   assert.equal(interpolatedDeltaMs(snapshot, 250), -1750);
-  assert.equal(interpolatedSegmentMs(snapshot, 250), 3250);
 });
 
-test('unknown delta and segment stay unknown', () => {
+test('an unknown delta stays unknown', () => {
   const snapshot = makeSnapshot({ phase: 'Running', receivedAt: 0 });
   assert.equal(interpolatedDeltaMs(snapshot, 250), null);
-  assert.equal(interpolatedSegmentMs(snapshot, 250), null);
 });

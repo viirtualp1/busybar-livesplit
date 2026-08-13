@@ -80,7 +80,8 @@ test('a first poll collects names, attempts and comparisons', async () => {
     ['One', 'Two', 'Three'],
   );
   assert.equal(snapshot.liveDeltaMs, -5000);
-  assert.equal(snapshot.liveSegmentMs, 10_000);
+  assert.equal(snapshot.lastSegmentMs, 20_000);
+  assert.equal(snapshot.lastBestSegmentMs, null); // split 0 was never polled
 });
 
 /** Only the commands older builds lack may be probed; the rest must be sent plainly. */
@@ -100,6 +101,48 @@ test('feature detection probes optional commands once', async () => {
   const marker = channel.probed.length;
   await run.poll();
   assert.deepEqual(channel.probed.slice(marker), []);
+});
+
+test('the timer is only marked advancing once two polls see it move', async () => {
+  clock = 0;
+  const channel = new FakeChannel(runningReplies());
+  const run = tracker(channel);
+
+  assert.equal((await run.poll()).advancing, false);
+
+  clock += 250;
+  channel.set(runningReplies({ getcurrenttime: '00:00:30.25' }));
+  assert.equal((await run.poll()).advancing, true);
+});
+
+/** LiveSplit stays in Running while game time is paused, and then time stands still. */
+test('a stalled clock under a running phase is not advancing', async () => {
+  clock = 0;
+  const channel = new FakeChannel(runningReplies());
+  const run = tracker(channel);
+  await run.poll();
+
+  clock += 250;
+  channel.set(runningReplies({ getcurrenttime: '00:00:30.25' }));
+  await run.poll();
+
+  clock += 250;
+  const snapshot = await run.poll();
+
+  assert.equal(snapshot.advancing, false);
+  assert.equal(snapshot.timeMs, 30_250);
+});
+
+test('a paused run never advances', async () => {
+  clock = 0;
+  const channel = new FakeChannel(runningReplies({ getcurrenttimerphase: 'Paused' }));
+  const run = tracker(channel);
+  await run.poll();
+
+  clock += 250;
+  const snapshot = await run.poll();
+
+  assert.equal(snapshot.advancing, false);
 });
 
 test('a steady frame costs three commands', async () => {
@@ -150,10 +193,40 @@ test('an unreached previous split leaves the best segment unknown', async () => 
   );
   const snapshot = await tracker(channel).poll();
 
-  assert.equal(snapshot.bestSegmentMs, null);
+  assert.equal(snapshot.lastBestSegmentMs, null);
 });
 
-test('the first split compares against the start', async () => {
+/** The segment on screen is the one just finished, not the one being run. */
+test('a completed split reports its own segment and record', async () => {
+  clock = 0;
+  const channel = new FakeChannel(
+    runningReplies({
+      getsplitindex: '0',
+      getlastsplittime: '-',
+      'getcomparisonsplittime Best Segments': '00:00:18.00',
+    }),
+  );
+  const run = tracker(channel);
+  const started = await run.poll();
+
+  assert.equal(started.lastSegmentMs, null); // nothing finished yet
+  assert.equal(started.lastBestSegmentMs, null);
+
+  clock += 250;
+  channel.set(
+    runningReplies({
+      getsplitindex: '1',
+      getlastsplittime: '00:00:16.00',
+      'getcomparisonsplittime Best Segments': '00:00:40.00',
+    }),
+  );
+  const split = await run.poll();
+
+  assert.equal(split.lastSegmentMs, 16_000);
+  assert.equal(split.lastBestSegmentMs, 18_000);
+});
+
+test('the first split of a run compares against the start', async () => {
   clock = 0;
   const channel = new FakeChannel(
     runningReplies({
@@ -164,8 +237,8 @@ test('the first split compares against the start', async () => {
   );
   const snapshot = await tracker(channel).poll();
 
-  assert.equal(snapshot.bestSegmentMs, 18_000);
-  assert.equal(snapshot.liveSegmentMs, 30_000);
+  assert.equal(snapshot.timeMs, 30_000);
+  assert.equal(snapshot.splitIndex, 0);
 });
 
 test('a different run with the same split count reloads the names', async () => {
@@ -287,7 +360,7 @@ test('an optional command that kills the connection is retired', async () => {
     channel.since(marker).includes('getcomparisonsplittime Best Segments'),
     false,
   );
-  assert.equal(snapshot.bestSegmentMs, null);
+  assert.equal(snapshot.lastBestSegmentMs, null);
 });
 
 test('a reset run clears the recorded times', async () => {
@@ -306,7 +379,7 @@ test('a reset run clears the recorded times', async () => {
     snapshot.splits.every((split) => split.runMs === null),
     true,
   );
-  assert.equal(snapshot.liveSegmentMs, null);
+  assert.equal(snapshot.lastSegmentMs, null);
   assert.equal(snapshot.splitName, '');
 });
 

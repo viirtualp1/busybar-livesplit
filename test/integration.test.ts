@@ -121,7 +121,7 @@ test('a modern server drives a full frame over a real socket', async () => {
     snapshot.splits.map((entry) => entry.name),
     SPLITS,
   );
-  assert.equal(snapshot.bestSegmentMs, null); // segment 0 was never reached
+  assert.equal(snapshot.lastBestSegmentMs, null); // split 0 was never polled
 
   const frame = buildFrame(snapshot, { nowMs: 0, maxRows: 3 });
   assert.equal(frame.timeText, '0:30.00');

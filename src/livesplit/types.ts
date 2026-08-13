@@ -18,10 +18,17 @@ export type RunSnapshot = {
   timeMs: number;
   /** Monotonic timestamp of the `getcurrenttime` reply, for local interpolation. */
   receivedAt: number;
+  /**
+   * Two polls in a row saw the timer move. LiveSplit reports Running while the
+   * clock stands still — game time paused, loading times, an autosplitter — and
+   * interpolating those would race ahead and snap back on every poll.
+   */
+  advancing: boolean;
   lastDeltaMs: number | null;
   liveDeltaMs: number | null;
-  liveSegmentMs: number | null;
-  bestSegmentMs: number | null;
+  /** How long the segment that was just completed took, and its record to beat. */
+  lastSegmentMs: number | null;
+  lastBestSegmentMs: number | null;
   splitName: string;
   splitIndex: number;
   attemptCount: number;
@@ -33,10 +40,11 @@ export function emptySnapshot(receivedAt = 0): RunSnapshot {
     phase: 'NotRunning',
     timeMs: 0,
     receivedAt,
+    advancing: false,
     lastDeltaMs: null,
     liveDeltaMs: null,
-    liveSegmentMs: null,
-    bestSegmentMs: null,
+    lastSegmentMs: null,
+    lastBestSegmentMs: null,
     splitName: '',
     splitIndex: -1,
     attemptCount: 0,
