@@ -1,4 +1,9 @@
-import { BusyBar, type DisplayDrawParams, type TextElement } from '@busy-app/busy-lib';
+import {
+  BusyBar,
+  type DisplayDrawParams,
+  type RectangleElement,
+  type TextElement,
+} from '@busy-app/busy-lib';
 import { config } from './config.js';
 import type { TimerFrame } from './format.js';
 
@@ -139,18 +144,7 @@ export class BarDisplay {
           y: 0,
           timeout: 0,
         },
-        {
-          id: 'attempt',
-          type: 'text',
-          text: frame.attemptText,
-          font: 'tiny',
-          color: '#6E6E6EFF',
-          display: 'front',
-          align: 'top_left',
-          x: 0,
-          y: 0,
-          timeout: 0,
-        },
+        ...attemptPixels(frame.attemptText),
         {
           id: 'split',
           type: 'text',
@@ -210,6 +204,76 @@ export class BarDisplay {
     }
     void data;
   }
+}
+
+const PIXEL_FONT: Record<string, readonly string[]> = {
+  '0': ['111', '101', '101', '101', '111'],
+  '1': ['010', '110', '010', '010', '111'],
+  '2': ['111', '001', '111', '100', '111'],
+  '3': ['111', '001', '111', '001', '111'],
+  '4': ['101', '101', '111', '001', '001'],
+  '5': ['111', '100', '111', '001', '111'],
+  '6': ['111', '100', '111', '101', '111'],
+  '7': ['111', '001', '010', '010', '010'],
+  '8': ['111', '101', '111', '101', '111'],
+  '9': ['111', '101', '111', '001', '111'],
+};
+
+function attemptPixels(text: string): RectangleElement[] {
+  const digits = text.replace(/\D/g, '') || '0';
+  const color = '#8A8A8AFF';
+  const elements: RectangleElement[] = [];
+  let originX = 0;
+
+  for (const ch of digits) {
+    const rows = PIXEL_FONT[ch];
+    if (!rows) {
+      continue;
+    }
+    rows.forEach((row, y) => {
+      let run = -1;
+      for (let x = 0; x <= row.length; x += 1) {
+        const on = x < row.length && row[x] === '1';
+        if (on && run < 0) {
+          run = x;
+        }
+        if (!on && run >= 0) {
+          elements.push(pixelRect(elements.length, originX + run, y, x - run, color));
+          run = -1;
+        }
+      }
+    });
+    originX += 4;
+  }
+
+  while (elements.length < 40) {
+    elements.push(pixelRect(elements.length, 80, 0, 1, '#00000000'));
+  }
+  return elements;
+}
+
+function pixelRect(
+  index: number,
+  x: number,
+  y: number,
+  width: number,
+  color: string,
+): RectangleElement {
+  return {
+    id: `a${index}`,
+    type: 'rectangle',
+    display: 'front',
+    align: 'top_left',
+    x,
+    y,
+    width,
+    height: 1,
+    fill: 'solid',
+    fill_colors: [color],
+    border_width: 0,
+    border_color: '#00000000',
+    timeout: 0,
+  };
 }
 
 function backElements(frame: TimerFrame): TextElement[] {
