@@ -6,7 +6,6 @@ const APP_NAME = 'livesplit';
 const FRONT_WIDTH = 72;
 const BACK_WIDTH = 160;
 const SPLIT_Y = 11;
-const ATTEMPT_WIDTH = 16;
 const DELTA_WIDTH = 16;
 const TINY_CHAR_WIDTH = 3;
 const SMALL_CHAR_WIDTH = 4;
@@ -120,9 +119,8 @@ export class BarDisplay {
     }
 
     const hasDelta = frame.deltaText.length > 0;
-    const splitAreaLeft = ATTEMPT_WIDTH;
-    const splitAreaWidth = FRONT_WIDTH - ATTEMPT_WIDTH - (hasDelta ? DELTA_WIDTH : 0);
-    const splitX = splitAreaLeft + Math.floor(splitAreaWidth / 2);
+    const splitAreaWidth = FRONT_WIDTH - (hasDelta ? DELTA_WIDTH : 0);
+    const splitX = Math.floor(splitAreaWidth / 2);
 
     const payload: DisplayDrawParams = {
       application_name: APP_NAME,
@@ -146,11 +144,11 @@ export class BarDisplay {
           type: 'text',
           text: frame.attemptText,
           font: 'tiny',
-          color: frame.splitColor,
+          color: '#6E6E6EFF',
           display: 'front',
           align: 'top_left',
-          x: 1,
-          y: SPLIT_Y,
+          x: 0,
+          y: 0,
           timeout: 0,
         },
         {

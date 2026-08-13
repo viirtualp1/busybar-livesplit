@@ -54,16 +54,33 @@ function parseProtocol(value: string): 'auto' | 'tcp' | 'ws' {
 
 loadEnvFile(resolve(process.cwd(), '.env'));
 
+function isCloudAddr(addr: string): boolean {
+  return /api(?:\.(?:dev|test|stage))?\.busy\.app/i.test(addr);
+}
+
+function isUsbAddr(addr: string): boolean {
+  try {
+    const url = /^https?:\/\//i.test(addr) ? new URL(addr) : new URL(`http://${addr}`);
+    return url.hostname === '10.0.4.20';
+  } catch {
+    return addr.includes('10.0.4.20');
+  }
+}
+
 const token = process.env.BUSY_TOKEN?.trim() || '';
 const httpPassword = process.env.BUSY_HTTP_PASSWORD?.trim() || '';
+const busyAddr = envString(
+  'BUSY_ADDR',
+  token ? 'https://api.busy.app' : '10.0.4.20',
+);
+const cloud = isCloudAddr(busyAddr);
 
 export const config = {
-  busyAddr: envString(
-    'BUSY_ADDR',
-    token ? 'https://api.busy.app' : '10.0.4.20',
-  ),
-  busyToken: token,
-  busyHttpPassword: httpPassword,
+  busyAddr,
+  isCloud: cloud,
+  isUsb: isUsbAddr(busyAddr),
+  busyToken: cloud ? token : '',
+  busyHttpPassword: cloud || isUsbAddr(busyAddr) ? '' : httpPassword,
   liveSplitHost: envString('LIVESPLIT_HOST', '127.0.0.1'),
   liveSplitPort: envNumber('LIVESPLIT_PORT', 16834),
   liveSplitProtocol: parseProtocol(envString('LIVESPLIT_PROTOCOL', 'auto')),

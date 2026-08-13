@@ -102,6 +102,12 @@ async function connectLiveSplit(): Promise<void> {
 }
 
 async function connectBar(): Promise<void> {
+  if (!config.isCloud && !config.isUsb && !config.busyHttpPassword) {
+    console.warn(
+      'Wi-Fi needs BUSY_HTTP_PASSWORD (Bar web UI → Network → HTTP API access). Cloud BUSY_TOKEN will not work here.',
+    );
+  }
+
   while (running) {
     try {
       await display.ping();
@@ -109,7 +115,13 @@ async function connectBar(): Promise<void> {
       return;
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
-      console.warn(`Waiting for BUSY Bar at ${config.busyAddr}: ${reason}`);
+      const hint =
+        /forbidden/i.test(reason) && !config.isCloud
+          ? ' — set BUSY_HTTP_PASSWORD to the HTTP Access password, leave BUSY_TOKEN empty'
+          : '';
+      console.warn(
+        `Waiting for BUSY Bar at ${config.busyAddr}: ${reason}${hint}`,
+      );
       await sleep(2000);
     }
   }

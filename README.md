@@ -7,7 +7,7 @@ LiveSplit timer on a [BUSY Bar](https://busy.app/)
 **Front**
 
 - Bold run time, LiveSplit colors (ahead / behind gaining / losing, cyan PB)
-- Bottom row: attempt count `#12`, current split name, compact delta (`-1.2` / `+3.4`)
+- Attempt count, current split name + compact delta (`-1.2` / `+3.4`) on the bottom row
 - Gold: delta turns yellow when the **current segment** is faster than Best Segments
 
 **Back**
@@ -29,6 +29,8 @@ LiveSplit timer on a [BUSY Bar](https://busy.app/)
 | Start / Pause button | `reset`            |
 | Wheel click          | `pause` / `resume` |
 | Back                 | `unsplit`          |
+
+
 
 
 ## Requirements
