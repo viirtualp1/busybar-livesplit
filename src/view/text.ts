@@ -1,4 +1,5 @@
-export const MAX_SPLIT_NAME_LETTERS = 10;
+/** Keeps the name clear of the delta in the bottom-right corner of the front screen. */
+export const MAX_SPLIT_NAME_LETTERS = 8;
 const ELLIPSIS = '...';
 
 /**

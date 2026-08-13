@@ -131,7 +131,7 @@ test('a long split name is cut with dots', () => {
     makeSnapshot({ phase: 'Running', splitName: 'Underground Lake' }),
     options,
   );
-  assert.equal(frame.splitText, 'Undergroun...');
+  assert.equal(frame.splitText, 'Undergro...');
 });
 
 test('paused keeps the split name and dims it', () => {
