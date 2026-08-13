@@ -1,7 +1,8 @@
 import { BarDisplay, createBusyBar } from './bar.js';
 import { config } from './config.js';
-import { buildFrame } from './format.js';
-import { LiveSplitClient } from './livesplit.js';
+import { buildFrame, type FlashKind } from './format.js';
+import { BarInputListener, barInputUrl, type BarInput } from './input.js';
+import { LiveSplitClient, type LiveSplitState } from './livesplit.js';
 
 const livesplit = new LiveSplitClient(
   config.liveSplitHost,
@@ -10,12 +11,78 @@ const livesplit = new LiveSplitClient(
 );
 const bar = createBusyBar();
 const display = new BarDisplay(bar);
+const input = new BarInputListener(
+  barInputUrl(config.busyAddr, config.busyHttpPassword, config.busyToken),
+  onBarInput,
+);
 
 let running = true;
 let lastPhase = '';
+let lastSplitIndex = -2;
+let flash: FlashKind = null;
+let flashUntil = 0;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function triggerFlash(kind: FlashKind): void {
+  flash = kind;
+  flashUntil = Date.now() + 450;
+}
+
+function onBarInput(event: BarInput): void {
+  if (!livesplit.connected) {
+    return;
+  }
+  if (event.kind === 'ok') {
+    if (lastPhase === 'Paused') {
+      livesplit.resume();
+    } else if (lastPhase === 'Running') {
+      livesplit.pause();
+    }
+    return;
+  }
+  if (event.kind === 'back') {
+    livesplit.unsplit();
+    display.forceRedraw();
+    return;
+  }
+  if (event.kind === 'start') {
+    livesplit.reset();
+  }
+}
+
+function detectEvents(state: LiveSplitState): FlashKind {
+  const prevPhase = lastPhase;
+  const prevIndex = lastSplitIndex;
+  lastPhase = state.phase;
+  lastSplitIndex = state.splitIndex;
+
+  if (prevPhase === 'NotRunning' && state.phase === 'Running') {
+    return 'start';
+  }
+  if (
+    prevPhase !== '' &&
+    prevPhase !== 'NotRunning' &&
+    state.phase === 'NotRunning'
+  ) {
+    return 'reset';
+  }
+  if (state.phase === 'Ended' && prevPhase !== 'Ended') {
+    if (state.liveDeltaMs === null || state.liveDeltaMs < 0) {
+      return 'pb';
+    }
+    return 'split';
+  }
+  if (
+    (state.phase === 'Running' || state.phase === 'Paused') &&
+    prevIndex >= 0 &&
+    state.splitIndex > prevIndex
+  ) {
+    return 'split';
+  }
+  return null;
 }
 
 async function connectLiveSplit(): Promise<void> {
@@ -59,15 +126,20 @@ async function loop(): Promise<void> {
       }
 
       const state = await livesplit.getState();
-      if (state.phase !== lastPhase) {
-        lastPhase = state.phase;
+      const event = detectEvents(state);
+      if (event) {
         console.log(
           `[${state.phase}] ${buildFrame(state).timeText}` +
             (state.splitName ? `  ${state.splitName}` : ''),
         );
+        triggerFlash(event);
+        if (event === 'start' || event === 'reset' || event === 'pb') {
+          void display.playEvent(event);
+        }
       }
 
-      await display.push(buildFrame(state));
+      const activeFlash = Date.now() < flashUntil ? flash : null;
+      await display.push(buildFrame(state, activeFlash));
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
       console.warn(reason);
@@ -84,6 +156,7 @@ async function shutdown(): Promise<void> {
     return;
   }
   running = false;
+  input.stop();
   livesplit.disconnect();
   try {
     await display.clear();
@@ -99,11 +172,15 @@ process.on('SIGTERM', () => {
   void shutdown().finally(() => process.exit(0));
 });
 
-console.log('LiveSplit → BUSY Bar');
+console.log('busybar-livesplit');
 console.log(
-  'In LiveSplit: right click → Control → Start TCP Server (port 16834)',
+  'LiveSplit: right click → Control → Start TCP Server (port 16834)',
+);
+console.log(
+  'Bar: start = reset, wheel click = pause, back = unsplit',
 );
 
 await connectBar();
+input.start();
 await connectLiveSplit();
 await loop();

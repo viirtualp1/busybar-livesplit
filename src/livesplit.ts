@@ -3,13 +3,25 @@ import { Socket } from 'node:net';
 export type TimerPhase = 'NotRunning' | 'Running' | 'Paused' | 'Ended';
 export type LiveSplitProtocol = 'auto' | 'tcp' | 'ws';
 
+export type SplitInfo = {
+  name: string;
+  pbMs: number | null;
+  runMs: number | null;
+};
+
 export type LiveSplitState = {
   phase: TimerPhase;
   timeMs: number;
   lastDeltaMs: number | null;
   liveDeltaMs: number | null;
+  liveSegmentMs: number | null;
+  bestSegmentMs: number | null;
+  isGold: boolean;
   splitName: string;
   splitIndex: number;
+  splitCount: number;
+  attemptCount: number;
+  splits: SplitInfo[];
 };
 
 type Pending = {
@@ -27,6 +39,15 @@ export class LiveSplitClient {
   private pending: Pending[] = [];
   private connecting: Promise<void> | null = null;
   private protocol: Exclude<LiveSplitProtocol, 'auto'> | null = null;
+  private splitNames: string[] = [];
+  private pbByIndex: Array<number | null> = [];
+  private runByIndex: Array<number | null> = [];
+  private bsByIndex: Array<number | null> = [];
+  private lastAttemptCount = 0;
+  private supportsBestSegments = true;
+  private supportsAttemptCount = true;
+  private supportsSplitCount = true;
+  private splitNamesProbed = false;
 
   constructor(
     private readonly host: string,
@@ -72,6 +93,22 @@ export class LiveSplitClient {
     this.failPending(new Error('LiveSplit disconnected'));
   }
 
+  unsplit(): void {
+    this.sendNoReply('unsplit');
+  }
+
+  reset(): void {
+    this.sendNoReply('reset');
+  }
+
+  pause(): void {
+    this.sendNoReply('pause');
+  }
+
+  resume(): void {
+    this.sendNoReply('resume');
+  }
+
   async getState(): Promise<LiveSplitState> {
     const phaseRaw = await this.send('getcurrenttimerphase');
     const phase = PHASES.has(phaseRaw as TimerPhase)
@@ -81,9 +118,14 @@ export class LiveSplitClient {
     const timeMs = parseLiveSplitTime(await this.send('getcurrenttime')) ?? 0;
     const splitIndex = Number.parseInt(await this.send('getsplitindex'), 10);
     const index = Number.isFinite(splitIndex) ? splitIndex : -1;
+    const attemptCount = await this.readAttemptCount();
+
+    await this.refreshNames();
 
     let lastDeltaMs: number | null = null;
     let liveDeltaMs: number | null = null;
+    let liveSegmentMs: number | null = null;
+    let bestSegmentMs: number | null = null;
     let splitName = '';
 
     if (phase === 'Running' || phase === 'Paused') {
@@ -91,24 +133,138 @@ export class LiveSplitClient {
       const comparisonMs = parseLiveSplitTime(
         await this.send('getcomparisonsplittime'),
       );
-      if (comparisonMs !== null) {
+      if (comparisonMs !== null && index >= 0) {
+        this.pbByIndex[index] = comparisonMs;
         liveDeltaMs = timeMs - comparisonMs;
+      }
+      const lastSplitMs = parseLiveSplitTime(await this.send('getlastsplittime'));
+      if (index > 0 && lastSplitMs !== null) {
+        this.runByIndex[index - 1] = lastSplitMs;
+      }
+      liveSegmentMs = lastSplitMs === null ? timeMs : timeMs - lastSplitMs;
+      if (this.supportsBestSegments && index >= 0) {
+        bestSegmentMs = await this.readBestSegment(index);
       }
       splitName = sanitizeSplitName(await this.send('getcurrentsplitname'));
     } else if (phase === 'Ended') {
       lastDeltaMs = parseLiveSplitTime(await this.send('getdelta'));
       liveDeltaMs = lastDeltaMs;
+      const lastSplitMs = parseLiveSplitTime(await this.send('getlastsplittime'));
+      if (lastSplitMs !== null && this.splitNames.length > 0) {
+        this.runByIndex[this.splitNames.length - 1] = lastSplitMs;
+      }
       splitName = sanitizeSplitName(await this.send('getprevioussplitname'));
+    } else {
+      this.runByIndex = this.splitNames.map(() => null);
     }
+
+    const isGold =
+      bestSegmentMs !== null &&
+      liveSegmentMs !== null &&
+      liveSegmentMs > 200 &&
+      liveSegmentMs < bestSegmentMs;
 
     return {
       phase,
       timeMs,
       lastDeltaMs,
       liveDeltaMs,
+      liveSegmentMs,
+      bestSegmentMs,
+      isGold,
       splitName,
       splitIndex: index,
+      splitCount: this.splitNames.length,
+      attemptCount,
+      splits: this.splitNames.map((name, i) => ({
+        name,
+        pbMs: this.pbByIndex[i] ?? null,
+        runMs: this.runByIndex[i] ?? null,
+      })),
     };
+  }
+
+  private async refreshNames(): Promise<void> {
+    const count = await this.readSplitCount();
+    if (count === this.splitNames.length && count > 0) {
+      return;
+    }
+
+    const names: string[] = [];
+    for (let i = 0; i < count; i += 1) {
+      const raw = await this.trySend(`getsplitname ${i}`);
+      names.push(sanitizeSplitName(raw ?? ''));
+    }
+    this.splitNames = names;
+    this.pbByIndex = names.map((_, i) => this.pbByIndex[i] ?? null);
+    this.runByIndex = names.map((_, i) => this.runByIndex[i] ?? null);
+    this.bsByIndex = names.map((_, i) => this.bsByIndex[i] ?? null);
+  }
+
+  private async readAttemptCount(): Promise<number> {
+    if (!this.supportsAttemptCount) {
+      return this.lastAttemptCount;
+    }
+    const raw = await this.trySend('getattemptcount');
+    if (raw === null) {
+      this.supportsAttemptCount = false;
+      return this.lastAttemptCount;
+    }
+    const parsed = Number.parseInt(raw, 10);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      return this.lastAttemptCount;
+    }
+    this.lastAttemptCount = parsed;
+    return parsed;
+  }
+
+  private async readSplitCount(): Promise<number> {
+    if (this.supportsSplitCount) {
+      const raw = await this.trySend('getsplitcount');
+      if (raw === null) {
+        this.supportsSplitCount = false;
+      } else {
+        const parsed = Number.parseInt(raw, 10);
+        return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+      }
+    }
+    if (this.splitNames.length > 0 || this.splitNamesProbed) {
+      return this.splitNames.length;
+    }
+    this.splitNamesProbed = true;
+    for (let i = 0; i < 64; i += 1) {
+      const name = await this.trySend(`getsplitname ${i}`);
+      if (name === null || name === '-' || !name.trim()) {
+        return i;
+      }
+    }
+    return 64;
+  }
+
+  private async trySend(command: string): Promise<string | null> {
+    try {
+      return await this.send(command);
+    } catch (error) {
+      if (!this.connected) {
+        throw error instanceof Error ? error : new Error(String(error));
+      }
+      return null;
+    }
+  }
+
+  private async readBestSegment(index: number): Promise<number | null> {
+    const raw = await this.trySend('getcomparisonsplittime Best Segments');
+    if (raw === null) {
+      this.supportsBestSegments = false;
+      return null;
+    }
+    const cumulative = parseLiveSplitTime(raw);
+    if (cumulative === null) {
+      return null;
+    }
+    this.bsByIndex[index] = cumulative;
+    const previous = index > 0 ? (this.bsByIndex[index - 1] ?? 0) : 0;
+    return cumulative - previous;
   }
 
   private async connectInternal(): Promise<void> {
@@ -129,6 +285,10 @@ export class LiveSplitClient {
           await this.connectWs();
         }
         this.protocol = protocol;
+        this.supportsBestSegments = true;
+        this.supportsAttemptCount = true;
+        this.supportsSplitCount = true;
+        this.splitNamesProbed = false;
         const phase = await this.send('getcurrenttimerphase');
         if (!PHASES.has(phase as TimerPhase)) {
           throw new Error(`Unexpected LiveSplit handshake (${protocol}): ${phase}`);
@@ -220,6 +380,14 @@ export class LiveSplitClient {
         }
       });
     });
+  }
+
+  private sendNoReply(command: string): void {
+    if (this.protocol === 'ws') {
+      this.ws?.send(command);
+      return;
+    }
+    this.socket?.write(`${command}\n`);
   }
 
   private send(command: string): Promise<string> {
