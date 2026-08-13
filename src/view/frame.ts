@@ -4,6 +4,7 @@ import { isPersonalBest } from '../domain/events.js';
 import { isGoldSegment } from '../domain/gold.js';
 import type { RunSnapshot, SplitInfo } from '../livesplit/types.js';
 import { COLORS } from './colors.js';
+import { truncateName } from './text.js';
 import { formatDelta, formatSplitTime, formatTimer } from './time.js';
 
 export type BackRow = {
@@ -43,6 +44,7 @@ export function buildFrame(snapshot: RunSnapshot, options: FrameOptions): TimerF
   const timeColor = timerColor(snapshot, liveDeltaMs);
   const deltaMs = displayedDelta(snapshot, liveDeltaMs);
   const attemptText = `#${snapshot.attemptCount}`;
+  const splitName = truncateName(snapshot.splitName);
   // Gold describes the completed segment, so it may only tint that split's delta.
   const goldDelta = gold && deltaMs !== null && deltaMs === snapshot.lastDeltaMs;
 
@@ -51,7 +53,7 @@ export function buildFrame(snapshot: RunSnapshot, options: FrameOptions): TimerF
     attemptText,
     deltaText: deltaMs === null ? '' : formatDelta(deltaMs),
     timeColor,
-    deltaColor: goldDelta ? COLORS.bestSegment : timeColor,
+    deltaColor: goldDelta ? COLORS.bestSegment : deltaColor(deltaMs, timeColor),
     ledColor: ledForEvent(flash),
     backHeader: attemptText,
     backRows: buildBackRows(snapshot, timeMs, gold, maxRows),
@@ -69,20 +71,20 @@ export function buildFrame(snapshot: RunSnapshot, options: FrameOptions): TimerF
   if (snapshot.phase === 'Paused') {
     return {
       ...base,
-      splitText: snapshot.splitName || 'PAUSED',
+      splitText: splitName || 'PAUSED',
       splitColor: COLORS.paused,
     };
   }
   if (snapshot.phase === 'Ended') {
     return {
       ...base,
-      splitText: snapshot.splitName || 'DONE',
+      splitText: splitName || 'DONE',
       splitColor: timeColor,
     };
   }
   return {
     ...base,
-    splitText: snapshot.splitName || 'RUNNING',
+    splitText: splitName || 'RUNNING',
     splitColor: COLORS.white,
   };
 }
@@ -97,17 +99,23 @@ function displayedDelta(
   if (snapshot.phase === 'Ended') {
     return liveDeltaMs ?? snapshot.lastDeltaMs;
   }
-  if (liveDeltaMs === null) {
-    return snapshot.lastDeltaMs;
-  }
-  // Losing time shows live, otherwise the last split's delta stays put.
-  if (
-    liveDeltaMs > 0 ||
-    (snapshot.lastDeltaMs !== null && liveDeltaMs > snapshot.lastDeltaMs)
-  ) {
+  /*
+   * Falling behind is worth watching as it happens, so the live value wins while
+   * it is positive. Ahead of the comparison it would only shrink the last split's
+   * delta on screen and disagree with the number LiveSplit shows for that split.
+   */
+  if (liveDeltaMs !== null && liveDeltaMs > 0) {
     return liveDeltaMs;
   }
   return snapshot.lastDeltaMs;
+}
+
+/** Whatever number ends up on screen has to be the one the colour describes. */
+function deltaColor(deltaMs: number | null, fallback: string): string {
+  if (deltaMs === null) {
+    return fallback;
+  }
+  return deltaMs < 0 ? COLORS.aheadGaining : COLORS.behindLosing;
 }
 
 function timerColor(snapshot: RunSnapshot, liveDeltaMs: number | null): string {

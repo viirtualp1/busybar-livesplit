@@ -71,6 +71,46 @@ test('a live delta is coloured by the delta, not by the last gold', () => {
   assert.equal(frame.deltaColor, COLORS.behindLosing);
 });
 
+/** The comparison moves to the next split, so the live delta turns negative again. */
+test('a split that lost time keeps its red delta afterwards', () => {
+  const frame = buildFrame(
+    makeSnapshot({
+      phase: 'Running',
+      lastDeltaMs: 2700,
+      liveDeltaMs: -1000,
+    }),
+    options,
+  );
+  assert.equal(frame.deltaText, '+2.7');
+  assert.equal(frame.deltaColor, COLORS.behindLosing);
+});
+
+test('while ahead the delta is the one LiveSplit shows for that split', () => {
+  const frame = buildFrame(
+    makeSnapshot({
+      phase: 'Running',
+      lastDeltaMs: -900,
+      liveDeltaMs: -400,
+    }),
+    options,
+  );
+  assert.equal(frame.deltaText, '-0.9');
+  assert.equal(frame.deltaColor, COLORS.aheadGaining);
+});
+
+test('losing time in the current segment is shown live and red', () => {
+  const frame = buildFrame(
+    makeSnapshot({
+      phase: 'Running',
+      lastDeltaMs: -900,
+      liveDeltaMs: 2000,
+    }),
+    options,
+  );
+  assert.equal(frame.deltaText, '+2.0');
+  assert.equal(frame.deltaColor, COLORS.behindLosing);
+});
+
 test('a split lost against the PB stays red, not gold', () => {
   const frame = buildFrame(
     makeSnapshot({
@@ -84,6 +124,14 @@ test('a split lost against the PB stays red, not gold', () => {
   );
   assert.equal(frame.deltaText, '+2.7');
   assert.equal(frame.deltaColor, COLORS.behindLosing);
+});
+
+test('a long split name is cut with dots', () => {
+  const frame = buildFrame(
+    makeSnapshot({ phase: 'Running', splitName: 'Underground Lake' }),
+    options,
+  );
+  assert.equal(frame.splitText, 'Undergroun...');
 });
 
 test('paused keeps the split name and dims it', () => {
