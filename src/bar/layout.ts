@@ -20,10 +20,10 @@ export const BACK = {
   rowHeight: BACK_ROW_HEIGHT,
   maxRows: Math.floor((BACK_HEIGHT - BACK_FIRST_ROW_Y) / BACK_ROW_HEIGHT),
   markX: 2,
-  nameX: 10,
-  nameWidth: 82,
-  timeRight: 122,
-  pbRight: 158,
+  nameX: 8,
+  nameWidth: 74,
+  timeX: 84,
+  pbX: 122,
 } as const;
 
 export type BarFont = 'tiny' | 'small' | 'bold';

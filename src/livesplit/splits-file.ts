@@ -57,16 +57,47 @@ function tagText(xml: string, tag: string): string | null {
 }
 
 function timeIn(xml: string | null, method: TimingMethod): number | null {
-  if (xml === null) {
+  if (!xml) {
     return null;
   }
-  const raw = tagText(xml, method === 'game' ? 'GameTime' : 'RealTime');
-  return raw === null ? null : parseLiveSplitTime(raw);
+  const preferred = method === 'game' ? 'GameTime' : 'RealTime';
+  const fallback = method === 'game' ? 'RealTime' : 'GameTime';
+  const raw = tagText(xml, preferred) ?? tagText(xml, fallback);
+  if (raw !== null) {
+    return parseLiveSplitTime(raw);
+  }
+  const plain = xml.trim();
+  return plain.includes('<') ? null : parseLiveSplitTime(plain);
 }
 
-/** `<SplitTime name="Personal Best" />` is how an unfinished comparison looks. */
-const PERSONAL_BEST =
-  /<SplitTime\s+name="Personal Best"\s*(?:\/>|>([\s\S]*?)<\/SplitTime>)/;
+function personalBestXml(splitTimes: string): string | null {
+  const pattern = /<SplitTime\b([^>]*)(?:\/>|>([\s\S]*?)<\/SplitTime>)/g;
+  let first: string | null = null;
+  for (const match of splitTimes.matchAll(pattern)) {
+    const inner = match[2] ?? '';
+    if (first === null) {
+      first = inner;
+    }
+    if (/name\s*=\s*["']Personal Best["']/i.test(match[1] ?? '')) {
+      return inner;
+    }
+  }
+  return first;
+}
+
+function fillPbFromGolds(segments: SplitsFileSegment[]): void {
+  if (segments.some((segment) => segment.pbMs !== null)) {
+    return;
+  }
+  let cumulative = 0;
+  for (const segment of segments) {
+    if (segment.bestSegmentMs === null) {
+      return;
+    }
+    cumulative += segment.bestSegmentMs;
+    segment.pbMs = cumulative;
+  }
+}
 
 const SEGMENT = /<Segment>([\s\S]*?)<\/Segment>/g;
 
@@ -86,10 +117,7 @@ export function parseSplitsFile(
     const splitTimes = block(segment, 'SplitTimes');
     segments.push({
       name: sanitizeSplitName(tagText(segment, 'Name') ?? ''),
-      pbMs: timeIn(
-        splitTimes === null ? null : (PERSONAL_BEST.exec(splitTimes)?.[1] ?? null),
-        method,
-      ),
+      pbMs: timeIn(splitTimes === null ? null : personalBestXml(splitTimes), method),
       bestSegmentMs: timeIn(block(segment, 'BestSegmentTime'), method),
     });
   }
@@ -97,6 +125,8 @@ export function parseSplitsFile(
   if (segments.length === 0) {
     return null;
   }
+
+  fillPbFromGolds(segments);
 
   const attempts = Number.parseInt(tagText(xml, 'AttemptCount') ?? '', 10);
   return {

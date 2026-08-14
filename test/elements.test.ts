@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { attemptElements, backElements } from '../src/bar/elements.js';
-import { BACK } from '../src/bar/layout.js';
+import { BACK, textWidth, type BarFont } from '../src/bar/layout.js';
 import { GLYPH_HEIGHT, MAX_ATTEMPT_DIGITS, RUNS_PER_ROW } from '../src/bar/pixel-font.js';
 import { COLORS } from '../src/view/colors.js';
 import { buildFrame } from '../src/view/frame.js';
@@ -72,7 +72,23 @@ test('every element stays inside the back screen', () => {
     }),
   );
   for (const element of elements) {
-    assert.ok(element.x <= BACK.width, `${element.id} at x=${element.x}`);
+    assert.ok(element.x >= 0, `${element.id} at x=${element.x}`);
     assert.ok(element.y < BACK.height, `${element.id} at y=${element.y}`);
+    const font = (element.font ?? 'tiny') as BarFont;
+    const right = element.x + textWidth(element.text, font);
+    assert.ok(right <= BACK.width, `${element.id} ends at ${right}`);
   }
+});
+
+test('the pb column is on-screen and opaque', () => {
+  const splits = makeSplits(2);
+  splits[0] = { name: 'One', pbMs: 12_000, runMs: null };
+  const elements = backElements(
+    buildFrame(makeSnapshot({ splits }), { nowMs: 0, maxRows: BACK.maxRows }),
+  );
+  const pb = elements.find((element) => element.id === 'b0-pb');
+  assert.equal(pb?.x, BACK.pbX);
+  assert.equal(pb?.text, '0:12');
+  assert.equal(pb?.color, COLORS.white);
+  assert.ok((pb?.x ?? 0) + textWidth(pb?.text ?? '', 'tiny') <= BACK.width);
 });

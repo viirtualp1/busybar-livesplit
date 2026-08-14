@@ -12,16 +12,18 @@ test('every back row fits on the screen', () => {
 });
 
 test('the time column is wide enough for an hour-long split', () => {
-  const columnWidth = BACK.timeRight - (BACK.nameX + BACK.nameWidth);
+  const columnWidth = BACK.pbX - BACK.timeX;
   assert.ok(
-    textWidth(LONGEST_SPLIT_TIME, 'small') <= columnWidth,
-    `${LONGEST_SPLIT_TIME} needs ${textWidth(LONGEST_SPLIT_TIME, 'small')}px, column is ${columnWidth}px`,
+    textWidth(LONGEST_SPLIT_TIME, 'tiny') <= columnWidth,
+    `${LONGEST_SPLIT_TIME} needs ${textWidth(LONGEST_SPLIT_TIME, 'tiny')}px, column is ${columnWidth}px`,
   );
 });
 
 test('the pb column stays on screen', () => {
-  assert.ok(BACK.pbRight <= BACK.width);
-  assert.ok(BACK.timeRight < BACK.pbRight);
+  const right = BACK.pbX + textWidth(LONGEST_SPLIT_TIME, 'tiny');
+  assert.ok(right <= BACK.width, `${right} > ${BACK.width}`);
+  assert.ok(BACK.timeX > BACK.nameX + BACK.nameWidth);
+  assert.ok(BACK.pbX > BACK.timeX);
 });
 
 test('short text is left alone', () => {

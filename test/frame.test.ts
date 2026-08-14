@@ -175,9 +175,9 @@ test('the running split shows the live time, past splits their own', () => {
     }),
     options,
   );
-  assert.equal(frame.backRows[0]?.time, '11.5');
-  assert.equal(frame.backRows[0]?.pb, '12.0');
-  assert.equal(frame.backRows[1]?.time, '20.0');
+  assert.equal(frame.backRows[0]?.time, '0:11');
+  assert.equal(frame.backRows[0]?.pb, '0:12');
+  assert.equal(frame.backRows[1]?.time, '0:20');
 });
 
 test('the timer advances between polls without a new snapshot', () => {

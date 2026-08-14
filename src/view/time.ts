@@ -20,7 +20,7 @@ export function formatTimer(ms: number): string {
   return `${sign}${minutes}:${pad(seconds)}.${pad(hundredths)}`;
 }
 
-/** Column-friendly: `s.t` under a minute, `m:ss` under an hour, `h:mm:ss` above. */
+/** Same shape as LiveSplit's split column: `m:ss`, or `h:mm:ss` past an hour. */
 export function formatSplitTime(ms: number | null): string {
   if (ms === null) {
     return '--';
@@ -34,11 +34,7 @@ export function formatSplitTime(ms: number | null): string {
   if (hours > 0) {
     return `${sign}${hours}:${pad(minutes)}:${pad(seconds)}`;
   }
-  if (minutes > 0) {
-    return `${sign}${minutes}:${pad(seconds)}`;
-  }
-  const tenths = Math.floor((abs % 1000) / 100);
-  return `${sign}${seconds}.${tenths}`;
+  return `${sign}${minutes}:${pad(seconds)}`;
 }
 
 /**

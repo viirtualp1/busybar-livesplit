@@ -271,8 +271,9 @@ export class SplitsCatalog {
     }
     this.announced = run.path;
     const title = [run.gameName, run.categoryName].filter(Boolean).join(' — ');
+    const withPb = run.segments.filter((segment) => segment.pbMs !== null).length;
     this.logger.info(
-      `Splits: ${title || 'unknown run'}, ${run.segments.length} segments (${run.path})`,
+      `Splits: ${title || 'unknown run'}, ${run.segments.length} segments, ${withPb} with PB (${run.path})`,
     );
   }
 

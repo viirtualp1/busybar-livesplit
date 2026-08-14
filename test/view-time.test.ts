@@ -20,7 +20,8 @@ test('keeps the sign of a start offset countdown', () => {
 
 test('split times keep hours instead of overflowing minutes', () => {
   assert.equal(formatSplitTime(null), '--');
-  assert.equal(formatSplitTime(12_300), '12.3');
+  assert.equal(formatSplitTime(12_300), '0:12');
+  assert.equal(formatSplitTime(48_900), '0:48');
   assert.equal(formatSplitTime(65_000), '1:05');
   assert.equal(formatSplitTime(3_930_000), '1:05:30');
 });
