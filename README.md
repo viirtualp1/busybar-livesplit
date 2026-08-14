@@ -2,8 +2,6 @@
 
 LiveSplit timer on a [BUSY Bar](https://busy.app/)
 
-<!-- Add a photo or gif of the Bar running a split here. -->
-
 ## What you get
 
 **Front**
@@ -15,16 +13,13 @@ LiveSplit timer on a [BUSY Bar](https://busy.app/)
 **Back**
 
 - Up to 5 splits, current one highlighted
-- Live / run time + PB column
-- Attempt count in the header, `PB` over the right column
+- Live / run time + BEST column
+- Attempt count in the header
 
 **Feedback**
 
 - Short LED flash on start / split / reset / PB
 - Quiet stock sounds: start, reset and finish **only if** the last split is done and the run is a PB
-
-The run is controlled from LiveSplit itself (keyboard or global hotkeys). The Bar is
-display-only: its firmware does not hand button presses to external apps yet.
 
 ## Requirements
 
@@ -97,52 +92,3 @@ or `ws` to skip the other. If LiveSplit runs on this machine keep
 | `POLL_MS`            | `250`                                                    | LiveSplit poll interval                                |
 | `FRAME_MS`           | `60`                                                     | Bar redraw interval                                    |
 | `DRAW_PRIORITY`      | `40`                                                     | Must be ≥ the app on screen; BUSY/CUSTOM session is 90 |
-
-The running timer is computed locally between polls, so hundredths stay smooth
-without hammering LiveSplit. Out-of-range values are clamped with a warning.
-
-## Development
-
-```bash
-npm run check   # lint + typecheck + tests
-npm test        # node:test, no device needed
-npm run build   # dist/
-```
-
-Layout: `src/livesplit` speaks the protocol, `src/domain` holds the run logic
-(events, gold, interpolation), `src/view` turns a snapshot into text and colours,
-`src/bar` draws it, and `src/app.ts` wires the poll and render loops together.
-
-## Troubleshooting
-
-**`LiveSplit timeout`** — the TCP server is not running or the host/port is wrong. A
-timeout drops the connection on purpose (replies are matched by order, so a late one
-would corrupt every following read) and the poll loop reconnects by itself.
-
-**Time jitters while the run is stopped** — the hundredths are computed locally
-between polls, which only happens once two polls agree the run clock moves. A timer
-that LiveSplit reports as Running while game time is paused (autosplitter, loading
-times) therefore stays put instead of racing ahead and snapping back.
-
-**Draws ignored / 409** — a BUSY or CUSTOM session owns the screen. Stop it or raise
-`DRAW_PRIORITY` (a session is 90).
-
-**Waiting for BUSY Bar** — USB: `10.0.4.20`. Wi-Fi: HTTP Access enabled + password.
-Cloud: valid `BUSY_TOKEN`. A 403 means the password is missing or wrong.
-
-**Empty back screen / only `#N` attempts** — released LiveSplit cannot list
-segments, so the split rows come from the `.lss` file. Watch the console for
-`Splits: … N segments`. If you see `No LiveSplit splits file found` instead, set
-`SPLITS_FILE` to that `.lss`. The old LiveSplit.Server component also leaves the
-list empty — use **Control → Start TCP Server** on a current LiveSplit build.
-
-**No gold** — add a Best Segments comparison in LiveSplit. Gold is judged on the
-segment that just ended, and a split this run entered mid-way or skipped has an
-unknown segment length, so it never lights up.
-
-**No sound** — check the Bar is not muted. The finish sound only plays on a PB
-(delta `< 0`, or no comparison at all on a first complete run).
-
-## License
-
-MIT — see [LICENSE](LICENSE).
