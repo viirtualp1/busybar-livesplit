@@ -1,7 +1,12 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { LiveSplitTimeoutError } from '../src/livesplit/connection.js';
-import { RunTracker, type CommandChannel } from '../src/livesplit/tracker.js';
+import type { SplitsFileRun } from '../src/livesplit/splits-file.js';
+import {
+  RunTracker,
+  type CommandChannel,
+  type RunCatalog,
+} from '../src/livesplit/tracker.js';
 
 type Replies = Record<string, string | null>;
 
@@ -61,8 +66,26 @@ function runningReplies(overrides: Replies = {}): Replies {
 }
 
 let clock = 0;
-function tracker(channel: CommandChannel): RunTracker {
-  return new RunTracker(channel, () => clock);
+function tracker(channel: CommandChannel, catalog?: RunCatalog): RunTracker {
+  return new RunTracker(channel, { now: () => clock, ...(catalog ? { catalog } : {}) });
+}
+
+function storedRun(
+  names: string[],
+  overrides: Partial<SplitsFileRun> = {},
+): SplitsFileRun {
+  return {
+    path: `C:\\runs\\${names.join('-')}.lss`,
+    gameName: 'Game',
+    categoryName: 'Any%',
+    attemptCount: null,
+    segments: names.map((name) => ({ name, pbMs: null, bestSegmentMs: null })),
+    ...overrides,
+  };
+}
+
+function catalogOf(...runs: SplitsFileRun[]): RunCatalog {
+  return { runs: () => runs, refresh: () => {} };
 }
 
 test('a first poll collects names, attempts and comparisons', async () => {
@@ -296,13 +319,58 @@ test('a command the server lacks is detected once and then skipped', async () =>
   assert.equal(snapshot.attemptCount, 0);
 });
 
-test('without getsplitcount the run has no rows', async () => {
+test('without getsplitcount the run is only known as far as it has been played', async () => {
   clock = 0;
   const channel = new FakeChannel(runningReplies({ getsplitcount: null }));
   const snapshot = await tracker(channel).poll();
 
-  assert.deepEqual(snapshot.splits, []);
+  assert.deepEqual(
+    snapshot.splits.map((split) => split.name),
+    ['One', 'Two'],
+  );
   assert.equal(channel.sent.includes('getsplitname 1'), false);
+});
+
+test('a splits file lays out the run when the server cannot list splits', async () => {
+  clock = 0;
+  const channel = new FakeChannel(
+    runningReplies({
+      getsplitcount: null,
+      'getsplitname 0': null,
+      'getsplitname 1': null,
+      'getsplitname 2': null,
+    }),
+  );
+  const snapshot = await tracker(
+    channel,
+    catalogOf(storedRun(['One', 'Two', 'Three'])),
+  ).poll();
+
+  assert.deepEqual(
+    snapshot.splits.map((split) => split.name),
+    ['One', 'Two', 'Three'],
+  );
+});
+
+test('an idle timer still lists splits from the file', async () => {
+  clock = 0;
+  const channel = new FakeChannel(
+    runningReplies({
+      getcurrenttimerphase: 'NotRunning',
+      getsplitindex: '-1',
+      getsplitcount: null,
+      getcurrentsplitname: '-',
+    }),
+  );
+  const snapshot = await tracker(
+    channel,
+    catalogOf(storedRun(['One', 'Two', 'Three'])),
+  ).poll();
+
+  assert.deepEqual(
+    snapshot.splits.map((split) => split.name),
+    ['One', 'Two', 'Three'],
+  );
 });
 
 /** Times are indexed, so rows still make sense on a server without names. */
@@ -320,7 +388,7 @@ test('without getsplitname the rows are kept but unnamed', async () => {
   assert.equal(snapshot.splits.length, 3);
   assert.deepEqual(
     snapshot.splits.map((split) => split.name),
-    ['', '', ''],
+    ['One', 'Two', ''],
   );
 });
 

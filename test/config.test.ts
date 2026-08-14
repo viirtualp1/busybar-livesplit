@@ -53,6 +53,12 @@ test('falls back on values that are not numbers', () => {
   assert.ok(warnings.some((warning) => warning.includes('DRAW_PRIORITY')));
 });
 
+test('warns when SPLITS_FILE points at nothing', () => {
+  const { warnings, config } = loadConfig({ SPLITS_FILE: 'C:\\missing\\run.lss' });
+  assert.equal(config.splitsFile, 'C:\\missing\\run.lss');
+  assert.ok(warnings.some((warning) => warning.includes('SPLITS_FILE')));
+});
+
 test('accepts known protocols and warns on the rest', () => {
   assert.equal(loadConfig({ LIVESPLIT_PROTOCOL: 'ws' }).config.liveSplitProtocol, 'ws');
   assert.equal(loadConfig({ LIVESPLIT_PROTOCOL: 'TCP' }).config.liveSplitProtocol, 'tcp');

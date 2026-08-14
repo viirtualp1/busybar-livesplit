@@ -127,7 +127,7 @@ export class BarDisplay {
       application_name: APP_NAME,
       priority: this.priority,
       ...(frame.ledColor ? { led_notification_color: frame.ledColor } : {}),
-      elements: [...frontElements(frame), ...backElements(frame)],
+      elements: [...backElements(frame), ...frontElements(frame)],
     };
 
     try {

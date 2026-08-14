@@ -1,5 +1,6 @@
 import { ServerCapabilities, type ServerFeature } from './capabilities.js';
 import { LiveSplitTimeoutError } from './connection.js';
+import type { SplitsFileRun } from './splits-file.js';
 import {
   emptySnapshot,
   isTimerPhase,
@@ -15,6 +16,20 @@ export type CommandChannel = {
   readonly connected: boolean;
   send(command: string): Promise<string>;
   trySend(command: string): Promise<string | null>;
+};
+
+/** The parsed splits files the tracker may lay a run out from, best guess first. */
+export type RunCatalog = {
+  runs(): SplitsFileRun[];
+  refresh(): void;
+  /** First layout waits on this so the back screen is not empty for a few polls. */
+  ready?(): Promise<void>;
+};
+
+export type TrackerOptions = {
+  now?: () => number;
+  capabilities?: ServerCapabilities;
+  catalog?: RunCatalog;
 };
 
 const RUN_RECHECK_MS = 2000;
@@ -37,18 +52,36 @@ function segmentLength(cumulative: Array<number | null>, index: number): number 
   return before === null ? null : at - before;
 }
 
+function fingerprintOf(run: SplitsFileRun): string {
+  const last = run.segments[run.segments.length - 1]?.name ?? '';
+  return `file|${run.path}|${run.segments.length}|${run.segments[0]?.name ?? ''}|${last}`;
+}
+
 /**
  * Turns the request/response protocol into a snapshot, keeping everything that
  * only changes on a split (comparison times, names, deltas) in a cache so a
  * steady frame costs three commands instead of ten.
+ *
+ * No released LiveSplit can list a run's segments — `getsplitcount` and
+ * `getsplitname` only exist on master — so the layout comes from the splits
+ * file when one is found, and otherwise from the names the timer hands out as
+ * the run walks past them. Both fill the same sparse caches, which is why every
+ * index is written through {@link observe} rather than sized up front.
  */
 export class RunTracker {
   private splitNames: string[] = [];
   private pbCumulative: Array<number | null> = [];
   private runCumulative: Array<number | null> = [];
   private bestCumulative: Array<number | null> = [];
+  private fileBestSegment: Array<number | null> = [];
+  private fileRun: SplitsFileRun | null = null;
+  /** Total segments once something authoritative said so, `null` while guessing. */
+  private splitCount: number | null = null;
+  private discovered = 0;
   private fingerprint = '';
   private runCheckedAt = Number.NEGATIVE_INFINITY;
+  private staleSplitCache = false;
+  private mismatchWarned = '';
   private attemptCount = 0;
   private phase: TimerPhase | null = null;
   private index: number | null = null;
@@ -57,16 +90,22 @@ export class RunTracker {
   private previousTimeMs: number | null = null;
   private previousReceivedAt = 0;
   private lastDeltaMs: number | null = null;
-  private previousCumulativeMs: number | null = null;
   private comparisonMs: number | null = null;
   private lastSegmentMs: number | null = null;
   private lastBestSegmentMs: number | null = null;
 
+  private readonly now: () => number;
+  private readonly capabilities: ServerCapabilities;
+  private readonly catalog: RunCatalog | null;
+
   constructor(
     private readonly channel: CommandChannel,
-    private readonly now: () => number = () => performance.now(),
-    private readonly capabilities = new ServerCapabilities(),
-  ) {}
+    options: TrackerOptions = {},
+  ) {
+    this.now = options.now ?? (() => performance.now());
+    this.capabilities = options.capabilities ?? new ServerCapabilities();
+    this.catalog = options.catalog ?? null;
+  }
 
   /** Drops the run caches; feature support is kept, it belongs to the server. */
   reset(): void {
@@ -74,6 +113,10 @@ export class RunTracker {
     this.pbCumulative = [];
     this.runCumulative = [];
     this.bestCumulative = [];
+    this.fileBestSegment = [];
+    this.fileRun = null;
+    this.splitCount = null;
+    this.discovered = 0;
     this.fingerprint = '';
     this.runCheckedAt = Number.NEGATIVE_INFINITY;
     this.attemptCount = 0;
@@ -108,7 +151,8 @@ export class RunTracker {
     this.phase = phase;
     this.index = index;
 
-    if (phaseChanged || phase === 'NotRunning') {
+    // An unknown layout is retried every poll: the splits file may still load.
+    if (phaseChanged || phase === 'NotRunning' || this.length === 0) {
       await this.refreshRun();
     }
     if (phaseChanged) {
@@ -117,12 +161,13 @@ export class RunTracker {
     }
 
     if (phase === 'NotRunning') {
-      this.runCumulative = this.splitNames.map(() => null);
-      this.bestCumulative = this.splitNames.map(() => null);
+      this.runCumulative = [];
+      this.bestCumulative = [];
       this.clearSplitCache();
-    } else if (indexChanged || phaseChanged) {
+    } else if (indexChanged || phaseChanged || this.staleSplitCache) {
       await this.refreshSplitCache(phase, index);
     }
+    this.staleSplitCache = false;
 
     const liveDeltaMs =
       phase === 'Ended'
@@ -170,18 +215,43 @@ export class RunTracker {
     return timeMs - previousTimeMs >= realElapsed * MIN_PROGRESS_RATE;
   }
 
+  /** Known segments: the real total when it is known, else what has been seen. */
+  private get length(): number {
+    return this.splitCount ?? this.discovered;
+  }
+
   private buildSplits(): SplitInfo[] {
-    return this.splitNames.map((name, i) => ({
-      name,
-      pbMs: this.pbCumulative[i] ?? null,
-      runMs: this.runCumulative[i] ?? null,
-    }));
+    const splits: SplitInfo[] = [];
+    for (let i = 0; i < this.length; i += 1) {
+      splits.push({
+        name: this.splitNames[i] ?? '',
+        pbMs: this.pbCumulative[i] ?? null,
+        runMs: this.runCumulative[i] ?? null,
+      });
+    }
+    return splits;
+  }
+
+  /** Every index the timer mentions is a row the back screen may already draw. */
+  private observe(index: number): void {
+    if (index >= 0 && index + 1 > this.discovered) {
+      this.discovered = index + 1;
+    }
+  }
+
+  private learnName(index: number, name: string): void {
+    if (index < 0) {
+      return;
+    }
+    if (name) {
+      this.splitNames[index] = name;
+    }
+    this.observe(index);
   }
 
   private clearSplitCache(): void {
     this.splitName = '';
     this.lastDeltaMs = null;
-    this.previousCumulativeMs = null;
     this.comparisonMs = null;
     this.lastSegmentMs = null;
     this.lastBestSegmentMs = null;
@@ -191,42 +261,69 @@ export class RunTracker {
     this.lastDeltaMs = parseLiveSplitTime((await this.ask('getdelta')) ?? '');
 
     const lastSplitMs = parseLiveSplitTime((await this.ask('getlastsplittime')) ?? '');
-    this.previousCumulativeMs = index <= 0 ? 0 : lastSplitMs;
+
+    /*
+     * `getprevioussplitname` is documented as the segment before the current
+     * index, so the segment that just ended is always `index - 1` — including
+     * when the run ends and the index moves past the last split.
+     */
+    const finished = index - 1;
+    if (finished >= 0 && lastSplitMs !== null) {
+      this.runCumulative[finished] = lastSplitMs;
+      this.observe(finished);
+    }
 
     if (phase === 'Ended') {
-      const finished = this.splitNames.length - 1;
-      if (finished >= 0 && lastSplitMs !== null) {
-        this.runCumulative[finished] = lastSplitMs;
-      }
       this.splitName = sanitizeSplitName((await this.ask('getprevioussplitname')) ?? '');
+      this.learnName(finished, this.splitName);
       this.comparisonMs = null;
       this.recordFinishedSegment(finished);
       return;
     }
 
-    if (index > 0 && lastSplitMs !== null) {
-      this.runCumulative[index - 1] = lastSplitMs;
-    }
-    this.recordFinishedSegment(index - 1);
+    this.recordFinishedSegment(finished);
 
     this.comparisonMs = parseLiveSplitTime(
       (await this.ask('getcomparisonsplittime')) ?? '',
     );
     if (this.comparisonMs !== null && index >= 0) {
       this.pbCumulative[index] = this.comparisonMs;
+      this.observe(index);
     }
 
     this.splitName = sanitizeSplitName((await this.ask('getcurrentsplitname')) ?? '');
+    this.checkFileRun(index, this.splitName);
+    this.learnName(index, this.splitName);
+    await this.learnPreviousName(finished);
     await this.cacheBestSegment(index);
+  }
+
+  /**
+   * Without a splits file the run is only ever known as far as it has been
+   * played, so the name behind the current split is worth one command the first
+   * time it is seen.
+   */
+  private async learnPreviousName(finished: number): Promise<void> {
+    if (finished < 0 || this.splitNames[finished]) {
+      return;
+    }
+    this.learnName(
+      finished,
+      sanitizeSplitName((await this.ask('getprevioussplitname')) ?? ''),
+    );
   }
 
   /**
    * Both lengths come from the cumulative caches, so a split this run never
    * passed leaves them null — which keeps a skipped split from faking a gold.
+   * The splits file only fills in for a server without a Best Segments
+   * comparison to offer.
    */
   private recordFinishedSegment(finished: number): void {
     this.lastSegmentMs = segmentLength(this.runCumulative, finished);
-    this.lastBestSegmentMs = segmentLength(this.bestCumulative, finished);
+    this.lastBestSegmentMs =
+      segmentLength(this.bestCumulative, finished) ??
+      (finished < 0 ? null : (this.fileBestSegment[finished] ?? null));
   }
 
   /** Best Segments is cumulative, so each split's value is kept for later diffs. */
@@ -247,6 +344,10 @@ export class RunTracker {
   private async refreshAttemptCount(): Promise<void> {
     const raw = await this.askOptional('attemptCount', 'getattemptcount');
     if (raw === null) {
+      const stored = this.fileRun?.attemptCount ?? null;
+      if (stored !== null) {
+        this.attemptCount = stored;
+      }
       return;
     }
     const parsed = Number.parseInt(raw, 10);
@@ -256,26 +357,119 @@ export class RunTracker {
   }
 
   /**
-   * Split names are only reloaded when the run actually changes: a different
-   * file with the same segment count would otherwise keep the old names and the
+   * The layout is only reloaded when the run actually changes: a different file
+   * with the same segment count would otherwise keep the old names and the
    * stale PB cache forever.
    */
   private async refreshRun(): Promise<void> {
     const now = this.now();
-    if (this.splitNames.length > 0 && now - this.runCheckedAt < RUN_RECHECK_MS) {
+    if (this.length > 0 && now - this.runCheckedAt < RUN_RECHECK_MS) {
       return;
     }
     this.runCheckedAt = now;
 
+    if (this.length === 0) {
+      await this.catalog?.ready?.();
+    } else {
+      this.catalog?.refresh();
+    }
+
+    if (this.applyStoredRun()) {
+      return;
+    }
+    await this.applyServerRun();
+  }
+
+  /** Uses the splits file whose names line up with the run on screen. */
+  private applyStoredRun(): boolean {
+    const runs = this.catalog?.runs() ?? [];
+    if (runs.length === 0) {
+      return false;
+    }
+
+    const chosen = this.chooseRun(runs);
+    if (chosen === null) {
+      return false;
+    }
+
+    const fingerprint = fingerprintOf(chosen);
+    if (fingerprint !== this.fingerprint) {
+      this.fingerprint = fingerprint;
+      this.applyRunFile(chosen);
+    }
+    return true;
+  }
+
+  /**
+   * While the timer sits at no split any file is as good a guess as the next, so
+   * the most recently opened one wins and {@link checkFileRun} corrects it as
+   * soon as the run names something.
+   */
+  private chooseRun(runs: SplitsFileRun[]): SplitsFileRun | null {
+    const index = this.index ?? -1;
+    if (!this.splitName || index < 0) {
+      return runs[0] ?? null;
+    }
+    return runs.find((run) => run.segments[index]?.name === this.splitName) ?? null;
+  }
+
+  /** A file that disagrees with the live split names describes some other run. */
+  private checkFileRun(index: number, liveName: string): void {
+    const active = this.fileRun;
+    if (active === null || !liveName || index < 0) {
+      return;
+    }
+    const stored = active.segments[index]?.name;
+    if (stored === undefined || stored === liveName) {
+      return;
+    }
+
+    if (this.mismatchWarned !== active.path) {
+      this.mismatchWarned = active.path;
+      console.warn(
+        `Splits file does not match the run in LiveSplit ("${stored}" vs "${liveName}"), ` +
+          `ignoring ${active.path}`,
+      );
+    }
+    this.dropStoredRun();
+  }
+
+  private dropStoredRun(): void {
+    this.fileRun = null;
+    this.fileBestSegment = [];
+    this.splitCount = null;
+    this.splitNames = [];
+    this.pbCumulative = [];
+    this.discovered = 0;
+    this.fingerprint = '';
+    this.runCheckedAt = Number.NEGATIVE_INFINITY;
+  }
+
+  private applyRunFile(run: SplitsFileRun): void {
+    this.fileRun = run;
+    this.splitCount = run.segments.length;
+    this.splitNames = run.segments.map((segment) => segment.name);
+    this.pbCumulative = run.segments.map((segment) => segment.pbMs);
+    this.fileBestSegment = run.segments.map((segment) => segment.bestSegmentMs);
+    this.runCumulative = [];
+    this.bestCumulative = [];
+    this.discovered = run.segments.length;
+    this.staleSplitCache = true;
+  }
+
+  /**
+   * Only master builds answer these. A server without them leaves the layout
+   * alone: whatever the run has already walked past is better than nothing.
+   */
+  private async applyServerRun(): Promise<void> {
     const count = await this.readSplitCount();
     if (count === 0) {
-      this.applyRun([]);
       return;
     }
 
     // Times still line up with indices, so the rows are usable without names.
     if (!this.capabilities.supports('splitNames')) {
-      await this.applyIfChanged(`${count}`, () =>
+      await this.applyIfChanged(`count|${count}`, () =>
         Array.from({ length: count }, () => ''),
       );
       return;
@@ -285,7 +479,7 @@ export class RunTracker {
     const last =
       count > 1 ? sanitizeSplitName((await this.askSplitName(count - 1)) ?? '') : first;
 
-    await this.applyIfChanged(`${count}|${first}|${last}`, async () => {
+    await this.applyIfChanged(`server|${count}|${first}|${last}`, async () => {
       const names: string[] = [];
       for (let i = 0; i < count; i += 1) {
         if (i === 0) {
@@ -312,11 +506,16 @@ export class RunTracker {
   }
 
   private applyRun(names: string[]): void {
+    this.fileRun = null;
+    this.fileBestSegment = [];
     this.splitNames = names;
-    this.pbCumulative = names.map(() => null);
-    this.runCumulative = names.map(() => null);
-    this.bestCumulative = names.map(() => null);
+    this.splitCount = names.length;
+    this.pbCumulative = [];
+    this.runCumulative = [];
+    this.bestCumulative = [];
+    this.discovered = names.length;
     this.clearSplitCache();
+    this.staleSplitCache = true;
   }
 
   private async askSplitName(index: number): Promise<string | null> {

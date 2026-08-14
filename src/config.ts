@@ -14,6 +14,8 @@ export type Config = {
   liveSplitProtocol: LiveSplitProtocol;
   pollMs: number;
   frameMs: number;
+  /** Explicit `.lss` path; empty means look at LiveSplit's own recent files. */
+  splitsFile: string;
 };
 
 export type LoadedConfig = {
@@ -111,6 +113,11 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): LoadedConfig {
     );
   }
 
+  const splits = read('SPLITS_FILE');
+  if (splits && !existsSync(splits)) {
+    warnings.push(`SPLITS_FILE=${splits} does not exist, falling back to auto-detection`);
+  }
+
   const protocolRaw = read('LIVESPLIT_PROTOCOL').toLowerCase();
   let protocol: LiveSplitProtocol = 'auto';
   if (protocolRaw === 'tcp' || protocolRaw === 'ws') {
@@ -137,6 +144,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): LoadedConfig {
       liveSplitProtocol: protocol,
       pollMs: number('POLL_MS', DEFAULTS.pollMs, LIMITS.pollMs),
       frameMs: number('FRAME_MS', DEFAULTS.frameMs, LIMITS.frameMs),
+      splitsFile: splits,
     },
   };
 }

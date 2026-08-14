@@ -107,57 +107,65 @@ async function startServer(handler: (command: string) => string | null): Promise
 test('a modern server drives a full frame over a real socket', async () => {
   const port = await startServer(modernServer);
   const connection = new LiveSplitConnection('127.0.0.1', port, 'tcp', FAST);
-  const tracker = new RunTracker(connection, () => 0);
+  const tracker = new RunTracker(connection, { now: () => 0 });
 
-  await connection.connect();
-  const snapshot = await tracker.poll();
+  try {
+    await connection.connect();
+    const snapshot = await tracker.poll();
 
-  assert.equal(snapshot.phase, 'Running');
-  assert.equal(snapshot.timeMs, 30_000);
-  assert.equal(snapshot.splitIndex, 1);
-  assert.equal(snapshot.splitName, 'Two');
-  assert.equal(snapshot.attemptCount, 12);
-  assert.deepEqual(
-    snapshot.splits.map((entry) => entry.name),
-    SPLITS,
-  );
-  assert.equal(snapshot.lastBestSegmentMs, null); // split 0 was never polled
+    assert.equal(snapshot.phase, 'Running');
+    assert.equal(snapshot.timeMs, 30_000);
+    assert.equal(snapshot.splitIndex, 1);
+    assert.equal(snapshot.splitName, 'Two');
+    assert.equal(snapshot.attemptCount, 12);
+    assert.deepEqual(
+      snapshot.splits.map((entry) => entry.name),
+      SPLITS,
+    );
+    assert.equal(snapshot.lastBestSegmentMs, null); // split 0 was never polled
 
-  const frame = buildFrame(snapshot, { nowMs: 0, maxRows: 3 });
-  assert.equal(frame.timeText, '0:30.00');
-  assert.equal(frame.splitText, 'Two');
-  assert.equal(frame.backRows.length, 3);
-  assert.equal(frame.backRows[1]?.current, true);
+    const frame = buildFrame(snapshot, { nowMs: 0, maxRows: 3 });
+    assert.equal(frame.timeText, '0:30.00');
+    assert.equal(frame.splitText, 'Two');
+    assert.equal(frame.backRows.length, 3);
+    assert.equal(frame.backRows[1]?.current, true);
 
-  // A second poll must still line up, which is what a shifted reply would break.
-  const again = await tracker.poll();
-  assert.equal(again.phase, 'Running');
-  assert.equal(connection.connected, true);
-
-  connection.disconnect();
+    // A second poll must still line up, which is what a shifted reply would break.
+    const again = await tracker.poll();
+    assert.equal(again.phase, 'Running');
+    assert.equal(connection.connected, true);
+  } finally {
+    connection.disconnect();
+  }
 });
 
 test('a legacy server keeps the timer working without the optional commands', async () => {
   const port = await startServer(legacyServer);
   const connection = new LiveSplitConnection('127.0.0.1', port, 'tcp', FAST);
-  const tracker = new RunTracker(connection, () => 0);
+  const tracker = new RunTracker(connection, { now: () => 0 });
 
-  await connection.connect();
-  const snapshot = await tracker.poll();
+  try {
+    await connection.connect();
+    const snapshot = await tracker.poll();
 
-  assert.equal(snapshot.phase, 'Running');
-  assert.equal(snapshot.timeMs, 30_000);
-  assert.equal(snapshot.splitName, 'Two');
-  assert.equal(snapshot.attemptCount, 0);
-  assert.deepEqual(snapshot.splits, []);
+    assert.equal(snapshot.phase, 'Running');
+    assert.equal(snapshot.timeMs, 30_000);
+    assert.equal(snapshot.splitName, 'Two');
+    assert.equal(snapshot.attemptCount, 0);
+    assert.deepEqual(
+      snapshot.splits.map((entry) => entry.name),
+      ['One', 'Two'],
+    );
 
-  const frame = buildFrame(snapshot, { nowMs: 0, maxRows: 3 });
-  assert.equal(frame.timeText, '0:30.00');
-  assert.equal(frame.splitText, 'Two');
+    const frame = buildFrame(snapshot, { nowMs: 0, maxRows: 3 });
+    assert.equal(frame.timeText, '0:30.00');
+    assert.equal(frame.splitText, 'Two');
+    assert.equal(frame.backRows.length, 2);
 
-  const again = await tracker.poll();
-  assert.equal(again.phase, 'Running');
-  assert.equal(connection.connected, true);
-
-  connection.disconnect();
+    const again = await tracker.poll();
+    assert.equal(again.phase, 'Running');
+    assert.equal(connection.connected, true);
+  } finally {
+    connection.disconnect();
+  }
 });

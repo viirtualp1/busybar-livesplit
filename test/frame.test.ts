@@ -132,6 +132,16 @@ test('paused keeps the split name and dims it', () => {
   assert.equal(frame.splitColor, COLORS.paused);
 });
 
+test('idle still lists splits on the back screen', () => {
+  const frame = buildFrame(
+    makeSnapshot({ attemptCount: 7, splits: makeSplits(3) }),
+    options,
+  );
+  assert.equal(frame.backHeader, '#7');
+  assert.equal(frame.backRows.length, 3);
+  assert.equal(frame.backRows[0]?.name, 'Split 1');
+});
+
 test('the back window follows the current split', () => {
   const frame = buildFrame(
     makeSnapshot({ phase: 'Running', splitIndex: 5, splits: makeSplits(10) }),

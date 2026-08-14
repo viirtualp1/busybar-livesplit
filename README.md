@@ -93,6 +93,7 @@ or `ws` to skip the other. If LiveSplit runs on this machine keep
 | `LIVESPLIT_HOST`     | `127.0.0.1`                                              | LiveSplit host                                         |
 | `LIVESPLIT_PORT`     | `16834`                                                  | LiveSplit port                                         |
 | `LIVESPLIT_PROTOCOL` | `auto`                                                   | `auto` / `tcp` / `ws`                                  |
+| `SPLITS_FILE`        | auto from LiveSplit                                      | Path to the `.lss` if auto-detect misses it            |
 | `POLL_MS`            | `250`                                                    | LiveSplit poll interval                                |
 | `FRAME_MS`           | `60`                                                     | Bar redraw interval                                    |
 | `DRAW_PRIORITY`      | `40`                                                     | Must be ≥ the app on screen; BUSY/CUSTOM session is 90 |
@@ -129,9 +130,11 @@ times) therefore stays put instead of racing ahead and snapping back.
 **Waiting for BUSY Bar** — USB: `10.0.4.20`. Wi-Fi: HTTP Access enabled + password.
 Cloud: valid `BUSY_TOKEN`. A 403 means the password is missing or wrong.
 
-**Empty back screen / `#0` attempts** — the timer works but the split list does not,
-which means the old LiveSplit.Server component is in use. Start the built-in server
-(**Control → Start TCP Server**) on a current LiveSplit build instead.
+**Empty back screen / only `#N` attempts** — released LiveSplit cannot list
+segments, so the split rows come from the `.lss` file. Watch the console for
+`Splits: … N segments`. If you see `No LiveSplit splits file found` instead, set
+`SPLITS_FILE` to that `.lss`. The old LiveSplit.Server component also leaves the
+list empty — use **Control → Start TCP Server** on a current LiveSplit build.
 
 **No gold** — add a Best Segments comparison in LiveSplit. Gold is judged on the
 segment that just ended, and a split this run entered mid-way or skipped has an

@@ -4,6 +4,7 @@ import { BarDisplay, createBusyBar } from './bar/display.js';
 import { errorMessage } from './bar/errors.js';
 import { loadConfig, loadEnvFile } from './config.js';
 import { LiveSplitConnection } from './livesplit/connection.js';
+import { SplitsCatalog } from './livesplit/splits-source.js';
 import { RunTracker } from './livesplit/tracker.js';
 
 loadEnvFile();
@@ -28,7 +29,9 @@ const bar = createBusyBar({
 const app = new App({
   config,
   connection,
-  tracker: new RunTracker(connection),
+  tracker: new RunTracker(connection, {
+    catalog: new SplitsCatalog(config.splitsFile),
+  }),
   display: new BarDisplay(bar, config.drawPriority),
 });
 

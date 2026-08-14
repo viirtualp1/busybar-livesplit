@@ -82,13 +82,31 @@ export function parseLiveSplitTime(raw: string): number | null {
 
   const seconds = Number.parseFloat(parts[parts.length - 1] ?? '');
   const minutes = parts.length > 1 ? Number(parts[parts.length - 2]) : 0;
-  const hours = parts.length > 2 ? Number(parts[0]) : 0;
-  if (!Number.isFinite(seconds) || !Number.isFinite(minutes) || !Number.isFinite(hours)) {
+  const head = parts.length > 2 ? splitDays(parts[0] ?? '') : { days: 0, hours: 0 };
+  if (
+    !Number.isFinite(seconds) ||
+    !Number.isFinite(minutes) ||
+    !Number.isFinite(head.hours) ||
+    !Number.isFinite(head.days)
+  ) {
     return null;
   }
 
-  const ms = hours * 3_600_000 + minutes * 60_000 + seconds * 1000;
+  const ms =
+    head.days * 86_400_000 + head.hours * 3_600_000 + minutes * 60_000 + seconds * 1000;
   return negative ? -ms : ms;
+}
+
+/** .NET writes a TimeSpan past 24h as `d.hh:mm:ss`, so the head may carry days. */
+function splitDays(head: string): { days: number; hours: number } {
+  const dot = head.indexOf('.');
+  if (dot < 0) {
+    return { days: 0, hours: Number(head) };
+  }
+  return {
+    days: Number(head.slice(0, dot)),
+    hours: Number(head.slice(dot + 1)),
+  };
 }
 
 const TRANSLITERATION: Record<string, string> = {
@@ -127,9 +145,18 @@ const TRANSLITERATION: Record<string, string> = {
   я: 'ya',
 };
 
+/**
+ * LiveSplit's Subsplits component reads markup out of the segment name itself:
+ * a leading `-` makes the segment a subsplit, and `{Section}` in front of it
+ * names the group the segment closes. Neither belongs on a 82px wide row.
+ */
+export function stripSubsplitMarkup(raw: string): string {
+  return raw.trim().replace(/^\{[^}]*\}/, '').replace(/^-/, '').trim();
+}
+
 /** The Bar fonts only cover printable ASCII, so anything else has to be mapped. */
 export function sanitizeSplitName(raw: string): string {
-  const transliterated = [...raw.normalize('NFKD')]
+  const transliterated = [...stripSubsplitMarkup(raw).normalize('NFKD')]
     .map((char) => {
       const lower = char.toLowerCase();
       const mapped = TRANSLITERATION[lower];
