@@ -49,7 +49,8 @@
     "prepublishOnly": "npm run check && npm run build"
   },
   "dependencies": {
-    "@busy-app/busy-lib": "^0.18.0"
+    "@busy-app/busy-lib": "^0.18.0",
+    "busybar-kit": "file:../busybar-kit"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

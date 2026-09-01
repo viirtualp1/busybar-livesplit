@@ -1,6 +1,7 @@
+import { BASE_COLORS } from 'busybar-kit/colors';
+
 export const COLORS = {
-  white: '#FFFFFFFF',
-  transparent: '#00000000',
+  ...BASE_COLORS,
   aheadGaining: '#36CC00FF',
   aheadLosing: '#7FD161FF',
   behindGaining: '#D16161FF',
@@ -10,7 +11,6 @@ export const COLORS = {
   notRunning: '#ABABABFF',
   paused: '#7A7A7AFF',
   highlight: '#2B7FFFFF',
-  muted: '#9AA0A6FF',
   attempt: '#8A8A8AFF',
   ledSplit: '#FFFFFFFF',
   ledReset: '#FF453AFF',

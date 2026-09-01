@@ -1,6 +1,6 @@
 import { BACK } from './bar/layout.js';
 import type { BarDisplay } from './bar/display.js';
-import { errorMessage, isForbidden } from './bar/errors.js';
+import { errorMessage, isForbidden } from 'busybar-kit/errors';
 import type { Config } from './config.js';
 import { detectEvent, initialEventState, type EventState } from './domain/events.js';
 import { FlashWindow } from './domain/flash.js';
@@ -135,7 +135,7 @@ export class App {
     this.flash.trigger(event, this.now());
     this.logger.info(
       `[${event}] ${formatTimer(this.snapshot.timeMs)}` +
-      (this.snapshot.splitName ? `  ${this.snapshot.splitName}` : ''),
+        (this.snapshot.splitName ? `  ${this.snapshot.splitName}` : ''),
     );
 
     if (event !== 'split') {

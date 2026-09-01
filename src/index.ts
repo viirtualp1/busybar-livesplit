@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { App } from './app.js';
 import { BarDisplay, createBusyBar } from './bar/display.js';
-import { errorMessage } from './bar/errors.js';
+import { errorMessage } from 'busybar-kit/errors';
 import { loadConfig, loadEnvFile } from './config.js';
 import { LiveSplitConnection } from './livesplit/connection.js';
 import { SplitsCatalog } from './livesplit/splits-source.js';

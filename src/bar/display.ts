@@ -2,7 +2,7 @@ import { BusyBar, type DisplayDrawParams } from '@busy-app/busy-lib';
 import type { RunEvent } from '../domain/events.js';
 import type { TimerFrame } from '../view/frame.js';
 import { backElements, frontElements } from './elements.js';
-import { isClientError, isLowPriority, toBarError } from './errors.js';
+import { isClientError, isLowPriority, toBarError } from 'busybar-kit/errors';
 
 export const APP_NAME = 'livesplit';
 
