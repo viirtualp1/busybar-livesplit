@@ -1,5 +1,8 @@
 # busybar-livesplit
 
+> [!IMPORTANT]
+> **Unofficial community project.** Built and maintained by [@viirtualp1](https://github.com/viirtualp1), **not** an official Flipper Devices / BUSY product, and not affiliated with, endorsed by, or supported by them. "BUSY Bar" remains their trademark. For the real hardware and official apps, visit **[busy.app](https://busy.app/)**.
+
 LiveSplit timer on a [BUSY Bar](https://busy.app/)
 
 ## What you get
