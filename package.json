@@ -50,7 +50,7 @@
   },
   "dependencies": {
     "@busy-app/busy-lib": "^0.18.0",
-    "busybar-kit": "^1.0.0"
+    "busybar-kit": "^1.1.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
@@ -61,5 +61,8 @@
     "tsx": "^4.23.12",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.67.0"
+  },
+  "busybar": {
+    "config": "./dist/config-spec.js"
   }
 }
