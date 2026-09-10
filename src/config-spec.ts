@@ -8,6 +8,7 @@ export default defineConfigSpec({
       kind: 'env',
       file: '.env',
       title: 'Settings',
+      reloads: 'restart',
       fields: [
         {
           key: 'SPLITS_FILE',
@@ -22,7 +23,7 @@ export default defineConfigSpec({
           type: 'number',
           fallback: '16834',
           hint: 'LiveSplit → right click → Control → Start TCP Server',
-          validate: integerIn(1, 65_535),
+          rules: [integerIn(1, 65_535)],
         },
         {
           key: 'LIVESPLIT_PROTOCOL',
@@ -49,7 +50,7 @@ export default defineConfigSpec({
           type: 'number',
           advanced: true,
           hint: 'A timer showing hundredths wants this small',
-          validate: integerIn(40, 5000),
+          rules: [integerIn(40, 5000)],
         },
       ],
     },

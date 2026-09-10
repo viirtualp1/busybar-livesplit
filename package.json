@@ -1,6 +1,6 @@
 {
   "name": "busybar-livesplit",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "LiveSplit speedrun timer on BUSY Bar",
   "author": "viirtualp1",
   "license": "MIT",
@@ -36,7 +36,7 @@
   },
   "scripts": {
     "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
-    "build": "npm run clean && tsc -p tsconfig.build.json",
+    "build": "npm run clean && tsc -p tsconfig.build.json && busybar-emit-spec",
     "typecheck": "tsc -p tsconfig.json",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
@@ -50,7 +50,7 @@
   },
   "dependencies": {
     "@busy-app/busy-lib": "^0.18.0",
-    "busybar-kit": "^1.1.0"
+    "busybar-kit": "^2.0.0"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
@@ -63,6 +63,7 @@
     "typescript-eslint": "^8.67.0"
   },
   "busybar": {
-    "config": "./dist/config-spec.js"
+    "config": "./dist/config-spec.js",
+    "configJson": "./dist/config-spec.json"
   }
 }
