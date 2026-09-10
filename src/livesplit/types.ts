@@ -151,7 +151,11 @@ const TRANSLITERATION: Record<string, string> = {
  * names the group the segment closes. Neither belongs on a 82px wide row.
  */
 export function stripSubsplitMarkup(raw: string): string {
-  return raw.trim().replace(/^\{[^}]*\}/, '').replace(/^-/, '').trim();
+  return raw
+    .trim()
+    .replace(/^\{[^}]*\}/, '')
+    .replace(/^-/, '')
+    .trim();
 }
 
 /** The Bar fonts only cover printable ASCII, so anything else has to be mapped. */

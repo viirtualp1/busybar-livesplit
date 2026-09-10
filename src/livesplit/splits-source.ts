@@ -89,7 +89,7 @@ export async function liveSplitDir(): Promise<string | null> {
 }
 
 const FIND_LIVESPLIT = [
-  "$p = Get-CimInstance -ClassName Win32_Process -Filter \"Name LIKE 'LiveSplit%.exe'\" -ErrorAction SilentlyContinue |",
+  '$p = Get-CimInstance -ClassName Win32_Process -Filter "Name LIKE \'LiveSplit%.exe\'" -ErrorAction SilentlyContinue |',
   '  Where-Object { $_.ExecutablePath } | Select-Object -First 1',
   'if ($p) { $p.ExecutablePath; exit }',
   "(Get-Process -Name 'LiveSplit*' -ErrorAction SilentlyContinue | Where-Object { $_.Path } | Select-Object -First 1).Path",

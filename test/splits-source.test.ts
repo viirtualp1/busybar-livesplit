@@ -46,9 +46,7 @@ const LSS = `<?xml version="1.0" encoding="UTF-8"?>
 `;
 
 test('the last RecentSplits entry is tried first', () => {
-  const found = parseRecentSplits(
-    SETTINGS.replace('__PATH__', 'C:\\runs\\game.lss'),
-  );
+  const found = parseRecentSplits(SETTINGS.replace('__PATH__', 'C:\\runs\\game.lss'));
   assert.equal(found[0]?.path, 'C:\\runs\\game.lss');
   assert.equal(found[0]?.timingMethod, 'game');
   assert.equal(found[1]?.path, 'C:\\missing\\old.lss');
