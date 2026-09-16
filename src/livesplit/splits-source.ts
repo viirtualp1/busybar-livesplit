@@ -17,6 +17,12 @@ const run = promisify(execFile);
 /** Long enough that LiveSplit rewriting the file is picked up within a split. */
 const RECHECK_MS = 5000;
 const PROCESS_LOOKUP_MS = 5000;
+/**
+ * How long to wait before looking for LiveSplit again after not finding it.
+ * Each look is a PowerShell process; at the five-second recheck that was twelve
+ * a minute for as long as LiveSplit stayed closed.
+ */
+const LOOKUP_RETRY_MS = 60_000;
 
 export type SplitsCandidate = {
   path: string;
@@ -104,6 +110,7 @@ export class SplitsCatalog {
   private loaded: SplitsFileRun[] = [];
   private mtimes = new Map<string, number>();
   private dir: string | null = null;
+  private lookedAt = Number.NEGATIVE_INFINITY;
   private checkedAt = Number.NEGATIVE_INFINITY;
   private inflight: Promise<void> | null = null;
   private announced = '';
@@ -228,6 +235,11 @@ export class SplitsCatalog {
 
   private async recentSplits(): Promise<SplitsCandidate[]> {
     if (this.dir === null) {
+      const now = this.now();
+      if (now - this.lookedAt < LOOKUP_RETRY_MS) {
+        return [];
+      }
+      this.lookedAt = now;
       this.dir = await this.locateDir();
     }
     if (this.dir === null) {

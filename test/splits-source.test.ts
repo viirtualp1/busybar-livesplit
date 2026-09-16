@@ -75,6 +75,32 @@ test('the catalog loads the current run from LiveSplit settings', async () => {
   assert.equal(run.segments[0]?.pbMs, 60_000);
 });
 
+test('a closed LiveSplit is looked for once a minute, not on every recheck', async () => {
+  let clock = 0;
+  let lookups = 0;
+  const catalog = new SplitsCatalog('', {
+    logger: { info() {}, warn() {} },
+    now: () => clock,
+    locateDir: () => {
+      lookups += 1;
+
+      return Promise.resolve(null);
+    },
+  });
+  await catalog.ready();
+
+  for (const at of [6000, 12_000, 30_000, 59_000]) {
+    clock = at;
+    await catalog.ready();
+  }
+  assert.equal(lookups, 1, 'each look is a PowerShell process');
+
+  // Past both the minute and the five-second recheck after 59s.
+  clock = 65_000;
+  await catalog.ready();
+  assert.equal(lookups, 2, 'but it is still found once it starts');
+});
+
 test('a nearby lss file is used when RecentSplits is empty', async () => {
   const dir = await mkdtemp(join(tmpdir(), 'busybar-splits-'));
   await writeFile(join(dir, 'solo.lss'), LSS);
